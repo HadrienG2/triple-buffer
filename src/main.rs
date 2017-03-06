@@ -389,7 +389,9 @@ mod tests {
             let mut last_value = 0u64;
             while last_value < test_write_count {
                 let new_value = *buf_output.read();
-                assert!(new_value-last_value <= 1);
+                assert!(
+                    (new_value >= last_value) && (new_value-last_value <= 1)
+                );
                 last_value = new_value;
             }
         });
@@ -397,6 +399,7 @@ mod tests {
         // The writer continuously increments the buffered value, with some
         // rate limiting to ensure that the reader can see the updates
         let writer = ::thread::spawn(move || {
+            // TODO: Use a barrier here instead
             ::thread::sleep(::Duration::from_millis(1));
             for value in 1 .. test_write_count+1 {
                 buf_input.write(value);
