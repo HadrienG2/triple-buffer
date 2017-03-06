@@ -105,10 +105,49 @@ mod tests {
         assert!(buf.storage[buf.read_idx] == 42);
 
         // Last-written index must initially point to read buffer
-        assert_eq!(buf.read_idx, last_idx);
+        assert_eq!(last_idx, buf.read_idx);
     }
+    
+    /// Test that (sequentially) writing to a triple buffer works
+    #[test]
+    fn test_seq_write() {
+        // Let's create a triple buffer
+        let mut buf = ::TripleBuffer::new(false);
+        
+        // Back up initial state
+        let init_storage = buf.storage.clone();
+        let init_write_idx = buf.write_idx;
+        let init_back_idx = buf.back_idx.load(::Ordering::Relaxed);
+        let init_read_idx = buf.read_idx;
+        
+        // Perform a write
+        buf.write(true);
+        
+        // Only the write buffer should have changed
+        let mut expected_storage = init_storage.clone();
+        expected_storage[init_write_idx] = true;
+        assert_eq!(buf.storage, expected_storage);
+        
+        // Write index should point to the former back buffer
+        assert_eq!(buf.write_idx, init_back_idx);
+        
+        // Back index should point to the former write buffer
+        let new_back_idx = buf.back_idx.load(::Ordering::Relaxed);
+        assert_eq!(new_back_idx, init_write_idx);
+        
+        // Read index should be unchanged
+        assert_eq!(buf.read_idx, init_read_idx);
+        
+        // Last index should point to the newly written buffer
+        let new_last_idx = buf.last_idx.load(::Ordering::Relaxed);
+        assert_eq!(new_last_idx, init_write_idx);
+    }
+    
+    // TODO: Check that (sequentially) reading from a triple buffer works
+    // TODO: Check that concurrent reads and writes work
 
     /// Range check for triple buffer indexes
+    #[allow(unused_comparisons)]
     fn index_in_range(idx: ::TripleBufferIndex) -> bool {
         (idx >= 0) & (idx <= 2)
     }
