@@ -113,37 +113,109 @@ mod tests {
     fn test_seq_write() {
         // Let's create a triple buffer
         let mut buf = ::TripleBuffer::new(false);
-        
+
         // Back up initial state
         let init_storage = buf.storage.clone();
         let init_write_idx = buf.write_idx;
         let init_back_idx = buf.back_idx.load(::Ordering::Relaxed);
         let init_read_idx = buf.read_idx;
-        
+
         // Perform a write
         buf.write(true);
-        
+
         // Only the write buffer should have changed
         let mut expected_storage = init_storage.clone();
         expected_storage[init_write_idx] = true;
         assert_eq!(buf.storage, expected_storage);
-        
+
         // Write index should point to the former back buffer
         assert_eq!(buf.write_idx, init_back_idx);
-        
+
         // Back index should point to the former write buffer
         let new_back_idx = buf.back_idx.load(::Ordering::Relaxed);
         assert_eq!(new_back_idx, init_write_idx);
-        
-        // Read index should be unchanged
+
+        // Read index should not change
         assert_eq!(buf.read_idx, init_read_idx);
-        
+
         // Last index should point to the newly written buffer
         let new_last_idx = buf.last_idx.load(::Ordering::Relaxed);
         assert_eq!(new_last_idx, init_write_idx);
     }
     
-    // TODO: Check that (sequentially) reading from a triple buffer works
+    /// Check that (sequentially) reading from a triple buffer works
+    #[test]
+    fn test_seq_read() {
+        // Let's create a triple buffer and write into it
+        let mut buf = ::TripleBuffer::new(1.0);
+        buf.write(4.2);
+
+        // Test readout from dirty (freshly written) triple buffer
+        {
+            // Back up initial state
+            let init_storage = buf.storage.clone();
+            let init_write_idx = buf.write_idx;
+            let init_read_idx = buf.read_idx;
+            let init_last_idx = buf.last_idx.load(::Ordering::Relaxed);
+
+            // Read from the buffer
+            let result = *buf.read();
+
+            // Output value should be correct
+            assert_eq!(result, 4.2);
+
+            // Storage should not change
+            assert_eq!(buf.storage, init_storage);
+
+            // Write index should not change
+            assert_eq!(buf.write_idx, init_write_idx);
+
+            // Back index should point to the former read buffer
+            let new_back_idx = buf.back_idx.load(::Ordering::Relaxed);
+            assert_eq!(new_back_idx, init_read_idx);
+
+            // Read index should point to the last written index
+            assert_eq!(buf.read_idx, init_last_idx);
+
+            // Last index should not change
+            let new_last_idx = buf.last_idx.load(::Ordering::Relaxed);
+            assert_eq!(new_last_idx, init_last_idx);
+        }
+
+        // Test readout from clean (unchanged) triple buffer
+        {
+            // Back up initial state
+            let init_storage = buf.storage.clone();
+            let init_write_idx = buf.write_idx;
+            let init_back_idx = buf.back_idx.load(::Ordering::Relaxed);
+            let init_read_idx = buf.read_idx;
+            let init_last_idx = buf.last_idx.load(::Ordering::Relaxed);
+
+            // Read from the buffer
+            let result = *buf.read();
+
+            // Output value should be correct
+            assert_eq!(result, 4.2);
+
+            // Storage should not change
+            assert_eq!(buf.storage, init_storage);
+
+            // Write index should not change
+            assert_eq!(buf.write_idx, init_write_idx);
+
+            // Back index should not change
+            let new_back_idx = buf.back_idx.load(::Ordering::Relaxed);
+            assert_eq!(new_back_idx, init_back_idx);
+
+            // Read index should not change
+            assert_eq!(buf.read_idx, init_read_idx);
+
+            // Last index should not change
+            let new_last_idx = buf.last_idx.load(::Ordering::Relaxed);
+            assert_eq!(new_last_idx, init_last_idx);
+        }
+    }
+
     // TODO: Check that concurrent reads and writes work
 
     /// Range check for triple buffer indexes
