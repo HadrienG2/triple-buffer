@@ -258,6 +258,9 @@ mod tests {
     use std::thread;
     use std::time::{Duration, Instant};
 
+
+    /// ### Unit tests
+
     /// Test that triple buffers are properly initialized
     #[test]
     fn test_init() {
@@ -392,7 +395,7 @@ mod tests {
     ///
     /// - Close running applications in the background
     /// - Re-run the tests with only one OS thread (RUST_TEST_THREADS=1)
-    /// - Increase the writer sleep period below
+    /// - Increase the writer sleep period
     ///
     #[test]
     #[ignore]
@@ -438,11 +441,14 @@ mod tests {
         writer.join().unwrap();
     }
 
-    /// This ignored test is actually a benchmark in disguise. You should always
-    /// run them in release mode and with a single thread (RUST_TEST_THREADS=1).
+
+    /// ### Benchmarks (run in release mode and with RUST_TEST_THREADS=1)
+
+    /// TODO: Extract each benchmark to a separate function
     #[test]
     #[ignore]
     fn run_benchmarks() {
+
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
@@ -480,7 +486,7 @@ mod tests {
             let barrier = ::Arc::new(Barrier::new(2));
             let w_barrier = barrier.clone();
 
-            // Set up a shared boolean flag so that they can stop together
+            // Set up a shared boolean flag so that we can stop the writer
             let run_flag = ::Arc::new(AtomicBool::new(true));
             let w_run_flag = run_flag.clone();
 
@@ -513,6 +519,9 @@ mod tests {
 
         // TODO: Benchmark writes under read pressure
     }
+
+
+    /// ### Utilities
 
     /// Simple benchmark harness while I'm waiting for #[bench] to stabilize
     fn benchmark<F: FnMut(u32)>(subject: &str, mut iteration: F) {
