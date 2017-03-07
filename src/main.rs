@@ -378,38 +378,34 @@ mod tests {
         let test_write_count = 1000;
 
         // This is the buffer that our reader and writer will share
-        let buf = ::TripleBuffer::new(0u64);
+        let mut buf = ::TripleBuffer::new(0u64);
 
-        // Let's split it into an input and an output
-        let (mut buf_input, mut buf_output) = (buf.input, buf.output);
-
-        // The reader continuously checks the buffered value, and should see
-        // every update without any incoherent value
-        let reader = ::thread::spawn(move || {
-            let mut last_value = 0u64;
-            while last_value < test_write_count {
-                let new_value = *buf_output.read();
-                assert!(
-                    (new_value >= last_value) && (new_value-last_value <= 1)
-                );
-                last_value = new_value;
-            }
-        });
+        // Extract the input stage so that we can send it to the writer
+        let mut buf_input = buf.input;
 
         // The writer continuously increments the buffered value, with some
         // rate limiting to ensure that the reader can see the updates
         let writer = ::thread::spawn(move || {
             // TODO: Use a barrier here instead
-            ::thread::sleep(::Duration::from_millis(1));
             for value in 1 .. test_write_count+1 {
                 buf_input.write(value);
                 ::thread::yield_now();
                 ::thread::sleep(::Duration::from_millis(1));
             }
         });
+        
+        // The reader continuously checks the buffered value, and should see
+        // every update without any incoherent value
+        let mut last_value = 0u64;
+        while last_value < test_write_count {
+            let new_value = *buf.output.read();
+            assert!(
+                (new_value >= last_value) && (new_value-last_value <= 1)
+            );
+            last_value = new_value;
+        }
 
-        // Wait for the reader and writer to finish
-        reader.join().unwrap();
+        // Wait for the writer to finish
         writer.join().unwrap();
     }
 
