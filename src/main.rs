@@ -1,4 +1,4 @@
-//! Triple buffering
+//! A triple buffering implementation
 //!
 //! In this crate, we attempt to implement a triple buffering mechanism,
 //! suitable for emulating shared memory cells in a thread-safe and
@@ -15,19 +15,19 @@ use std::sync::Arc;
 /// communication channel which behaves like a shared variable: writer submits
 /// regular updates, reader accesses latest available value at any time.
 ///
-/// The input and output of the triple buffer are what producers and consumers
+/// The input and output fields of this struct are what producers and consumers
 /// actually use in practice. They can safely be moved away from the
 /// TripleBuffer struct after construction, and are further documented below.
 ///
 #[derive(Debug)]
-struct TripleBuffer<T: Clone + PartialEq> {
+pub struct TripleBuffer<T: Clone + PartialEq> {
     input: TripleBufferInput<T>,
     output: TripleBufferOutput<T>,
 }
 //
 impl<T: Clone + PartialEq> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
-    fn new(initial: T) -> Self {
+    pub fn new(initial: T) -> Self {
         // Start with the shared state...
         let shared_state = Arc::new(
             TripleBufferSharedState {
@@ -55,7 +55,7 @@ impl<T: Clone + PartialEq> TripleBuffer<T> {
     }
 }
 //
-// The Clone and PartialEq traits are provided for testing & debugging.
+// The Clone and PartialEq traits are used internally for testing.
 //
 impl<T: Clone + PartialEq> Clone for TripleBuffer<T> {
     fn clone(&self) -> Self {
@@ -103,14 +103,14 @@ impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
 /// and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-struct TripleBufferInput<T: Clone + PartialEq> {
+pub struct TripleBufferInput<T: Clone + PartialEq> {
     shared: Arc<TripleBufferSharedState<T>>,
     write_idx: TripleBufferIndex,
 }
 //
 impl<T: Clone + PartialEq> TripleBufferInput<T> {
     /// Write a new value into the triple buffer
-    fn write(&mut self, value: T) {
+    pub fn write(&mut self, value: T) {
         // Access the shared state
         let ref shared_state = *self.shared;
 
@@ -145,14 +145,14 @@ impl<T: Clone + PartialEq> TripleBufferInput<T> {
 /// but deadlocks and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-struct TripleBufferOutput<T: Clone + PartialEq> {
+pub struct TripleBufferOutput<T: Clone + PartialEq> {
     shared: Arc<TripleBufferSharedState<T>>,
     read_idx: TripleBufferIndex,
 }
 //
 impl<T: Clone + PartialEq> TripleBufferOutput<T> {
     /// Access the latest value from the triple buffer
-    fn read(&mut self) -> &T {
+    pub fn read(&mut self) -> &T {
         // Access the shared state
         let ref shared_state = *self.shared;
         
