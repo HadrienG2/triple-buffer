@@ -4,7 +4,6 @@
 //! suitable for emulating shared memory cells in a thread-safe and
 //! non-blocking fashion between one single writer and one single reader.
 
-
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -255,8 +254,9 @@ impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
 #[cfg(test)]
 mod tests {
     use std::sync::Barrier;
+    use std::sync::atomic::AtomicBool;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     /// Test that triple buffers are properly initialized
     #[test]
@@ -438,11 +438,95 @@ mod tests {
         writer.join().unwrap();
     }
 
-    // TODO: Benchmark the performance of the triple buffer:
-    //          - Writes only (writes/sec)
-    //          - Clean reads only (reads/sec)
-    //          - Dirty reads only (reads/sec)
-    //          - Concurrent reads&writes (reads/sec, writes/sec)
+    /// This ignored test is actually a benchmark in disguise. You should always
+    /// run them in release mode and with a single thread (RUST_TEST_THREADS=1).
+    #[test]
+    #[ignore]
+    fn run_benchmarks() {
+        // Create a buffer
+        let mut buf = ::TripleBuffer::new(0u32);
+
+        // Benchmark clean reads
+        benchmark(
+            "clean reads",
+            |iter| {
+                let read = *buf.output.read();
+                assert!(read < 4000000000);
+            }
+        );
+
+        // Benchmark writes
+        benchmark(
+            "writes",
+            |iter| buf.input.write(iter)
+        );
+        
+        // Benchmark writes + dirty reads
+        benchmark(
+            "writes + dirty reads",
+            |iter| {
+                buf.input.write(iter);
+                let read = *buf.output.read();
+                assert!(read < 4000000000);
+            }
+        );
+
+        // Benchmark reads under write pressure
+        {
+            // Extract the buffer's input
+            let (mut buf_input, mut buf_output) = (buf.input, buf.output);
+
+            // Set up a shared boolean flag so that they can stop together
+            let run_flag = ::Arc::new(AtomicBool::new(true));
+            let w_run_flag = run_flag.clone();
+
+            // Set up a writer that continuously updates the shared value
+            let writer = thread::spawn(move || {
+                let counter = 1;
+                while w_run_flag.load(::Ordering::Relaxed) {
+                    buf_input.write(counter);
+                    counter.wrapping_add(1);
+                }
+            });
+
+            // Benchmark reads
+            benchmark(
+                "reads under write pressure",
+                |iter| {
+                    let read = *buf_output.read();
+                    assert!(read < 4000000000);
+                }
+            );
+
+            // Tell the writer to stop
+            run_flag.store(false, ::Ordering::Relaxed);
+            writer.join().unwrap();
+        }
+
+        // TODO: Benchmark writes under read pressure
+    }
+
+    /// Simple benchmark harness while I'm waiting for #[bench] to stabilize
+    fn benchmark<F: FnMut(u32)>(subject: &str, mut iteration: F) {
+        // Print an intro message
+        print!("Benchmarking {}... ", subject);
+
+        // For now, all benchmarks perfom the same amount of iterations
+        let num_iters = 100000000u32;
+
+        // Benchmark loop
+        let start_time = Instant::now();
+        for iter in 1 .. num_iters {
+            iteration(iter)
+        }
+        let total_duration = start_time.elapsed();
+
+        // Display the results
+        let total_ms = (total_duration.as_secs() as u32) * 1000
+                     + total_duration.subsec_nanos() / 1000000;
+        let iter_ns = (total_duration / num_iters).subsec_nanos();
+        println!("{} ms ({} ns/iter)", total_ms, iter_ns);
+    }
 
     /// Range check for triple buffer indexes
     #[allow(unused_comparisons)]
