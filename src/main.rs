@@ -1,4 +1,4 @@
-//! # Triple buffering
+//! Triple buffering
 //!
 //! In this crate, we attempt to implement a triple buffering mechanism,
 //! suitable for emulating shared memory cells in a thread-safe and
@@ -9,15 +9,174 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 
-/// ## Indexing
+/// A triple buffer, useful for nonblocking and thread-safe data sharing
 ///
-/// These types are used to index into triple buffers
-/// TODO: Switch to i8 / AtomicI8 once the later is stable
-type TripleBufferIndex = usize;
-type AtomicTripleBufferIndex = AtomicUsize;
+/// A triple buffer is a single-producer single-consumer nonblocking
+/// communication channel which behaves like a shared variable: writer submits
+/// regular updates, reader accesses latest available value at any time.
+///
+/// The input and output of the triple buffer are what producers and consumers
+/// actually use in practice. They can safely be moved away from the
+/// TripleBuffer struct after construction, and are further documented below.
+///
+#[derive(Debug)]
+struct TripleBuffer<T: Clone + PartialEq> {
+    input: TripleBufferInput<T>,
+    output: TripleBufferOutput<T>,
+}
+//
+impl<T: Clone + PartialEq> TripleBuffer<T> {
+    /// Construct a triple buffer with a certain initial value
+    fn new(initial: T) -> Self {
+        // Start with the shared state...
+        let shared_state = Arc::new(
+            TripleBufferSharedState {
+                buffers: [
+                    UnsafeCell::new(initial.clone()),
+                    UnsafeCell::new(initial.clone()),
+                    UnsafeCell::new(initial)
+                ],
+                back_idx: AtomicTripleBufferIndex::new(0),
+                last_idx: AtomicTripleBufferIndex::new(2),
+            }
+        );
+
+        // ...then construct the input and output structs
+        TripleBuffer {
+            input: TripleBufferInput {
+                shared: shared_state.clone(),
+                write_idx: 1,
+            },
+            output: TripleBufferOutput {
+                shared: shared_state,
+                read_idx: 2,
+            },
+        }
+    }
+}
+//
+// The Clone and PartialEq traits are provided for testing & debugging.
+//
+impl<T: Clone + PartialEq> Clone for TripleBuffer<T> {
+    fn clone(&self) -> Self {
+        // Clone the shared state. This is safe because at this layer of the
+        // interface, one needs an Input/Output &mut to mutate the shared state.
+        let shared_state = Arc::new(
+            unsafe { (*self.input.shared).clone() }
+        );
+
+        // ...then the input and output structs
+        TripleBuffer {
+            input: TripleBufferInput {
+                shared: shared_state.clone(),
+                write_idx: self.input.write_idx,
+            },
+            output: TripleBufferOutput {
+                shared: shared_state,
+                read_idx: self.output.read_idx,
+            },
+        }
+    }
+}
+//
+impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare the shared states. This is safe because at this layer of the
+        // interface, one needs an Input/Output &mut to mutate the shared state.
+        let shared_states_equal = unsafe {
+            (*self.input.shared).eq(&*other.input.shared)
+        };
+
+        // Compare the rest of the triple buffer states
+        shared_states_equal &&
+        (self.input.write_idx == other.input.write_idx) &&
+        (self.output.read_idx == other.output.read_idx)
+    }
+}
 
 
-/// ## Shared state
+/// Producer interface to the triple buffer
+///
+/// The producer of data can use this struct to submit updates to the triple
+/// buffer whenever he likes. These updates are nonblocking: a collision between
+/// the producer and the consumer will result in cache contention, but deadlocks
+/// and scheduling-induced slowdowns cannot happen.
+///
+#[derive(Debug)]
+struct TripleBufferInput<T: Clone + PartialEq> {
+    shared: Arc<TripleBufferSharedState<T>>,
+    write_idx: TripleBufferIndex,
+}
+//
+impl<T: Clone + PartialEq> TripleBufferInput<T> {
+    /// Write a new value into the triple buffer
+    fn write(&mut self, value: T) {
+        // Access the shared state
+        let ref shared_state = *self.shared;
+
+        // Determine which shared buffer is the write buffer
+        let active_idx = self.write_idx;
+
+        // Move the input value into the (exclusive-access) write buffer.
+        let write_ptr = shared_state.buffers[active_idx].get();
+        unsafe { *write_ptr = value; }
+
+        // Swap the back buffer and the write buffer. This makes the new data
+        // block available to the reader and gives us a new buffer to write to.
+        self.write_idx = shared_state.back_idx.swap(
+            active_idx,
+            Ordering::Release  // Need this for new buffer state to be visible
+        );
+
+        // Notify the reader that we submitted an update
+        shared_state.last_idx.store(
+            active_idx,
+            Ordering::Release  // Need this for back_idx to be visible
+        );
+    }
+}
+
+
+/// Consumer interface to the triple buffer
+///
+/// The consumer of data can use this struct to access the latest published
+/// update from the producer whenever he likes. Readout is nonblocking: a
+/// collision between the producer and consumer will result in cache contention,
+/// but deadlocks and scheduling-induced slowdowns cannot happen.
+///
+#[derive(Debug)]
+struct TripleBufferOutput<T: Clone + PartialEq> {
+    shared: Arc<TripleBufferSharedState<T>>,
+    read_idx: TripleBufferIndex,
+}
+//
+impl<T: Clone + PartialEq> TripleBufferOutput<T> {
+    /// Access the latest value from the triple buffer
+    fn read(&mut self) -> &T {
+        // Access the shared state
+        let ref shared_state = *self.shared;
+        
+        // Check if the writer has submitted an update
+        let last_idx = shared_state.last_idx.load(Ordering::Acquire);
+
+        // If an update is pending in the back buffer, make it our read buffer
+        if self.read_idx != last_idx {
+            // Swap the back buffer and the read buffer. We get exclusive read
+            // access to the data, and the writer gets a new back buffer.
+            self.read_idx = shared_state.back_idx.swap(
+                self.read_idx,
+                Ordering::Acquire  // Another update could have occured!
+            );
+        }
+
+        // Access data from the current (exclusive-access) read buffer
+        let read_ptr = shared_state.buffers[self.read_idx].get();
+        unsafe { &*read_ptr }
+    }
+}
+
+
+/// Triple buffer shared state
 ///
 /// In a triple buffering communication protocol, the reader and writer share
 /// the following storage:
@@ -28,10 +187,10 @@ type AtomicTripleBufferIndex = AtomicUsize;
 ///
 #[derive(Debug)]
 struct TripleBufferSharedState<T: Clone + PartialEq> {
-    /// Three buffers of data
+    /// Data storage buffers
     buffers: [UnsafeCell<T>; 3],
 
-    /// Index of the back-buffer (buffer which no one is currently accessing)
+    /// Index of the back-buffer (which no one is currently accessing)
     back_idx: AtomicTripleBufferIndex,
 
     /// Index of the most recently updated buffer
@@ -89,183 +248,33 @@ impl<T: Clone + PartialEq> TripleBufferSharedState<T> {
 unsafe impl<T: Clone + PartialEq> Sync for TripleBufferSharedState<T> {}
 
 
-/// ## Producing data ("input")
+/// Index types used for triple buffering
 ///
-/// The producer of data has exclusive write access to the so-called "write
-/// buffer". To send an update, it writes it into the write buffer, then swaps
-/// the write buffer with the back buffer, making the data accessible.
+/// These types are used to index into triple buffers
 ///
-#[derive(Debug)]
-struct TripleBufferInput<T: Clone + PartialEq> {
-    shared: Arc<TripleBufferSharedState<T>>,
-    write_idx: TripleBufferIndex,
-}
-//
-impl<T: Clone + PartialEq> TripleBufferInput<T> {
-    /// Write a new value into the triple buffer
-    fn write(&mut self, value: T) {
-        // Access the shared state
-        let ref shared_state = *self.shared;
-
-        // Determine which shared buffer is the write buffer
-        let active_idx = self.write_idx;
-
-        // Move the input value into the (exclusive-access) write buffer.
-        let write_ptr = shared_state.buffers[active_idx].get();
-        unsafe { *write_ptr = value; }
-
-        // Swap the back buffer and the write buffer. This makes the new data
-        // block available to the reader and gives us a new buffer to write to.
-        self.write_idx = shared_state.back_idx.swap(
-            active_idx,
-            Ordering::Release  // Need this for new buffer state to be visible
-        );
-
-        // Notify the reader that we submitted an update
-        shared_state.last_idx.store(
-            active_idx,
-            Ordering::Release  // Need this for back_idx to be visible
-        );
-    }
-}
-
-
-/// ## Consuming data ("output")
+/// TODO: Switch to i8 / AtomicI8 once the later is stable
 ///
-/// The consumer of data has exclusive read access to the so-called "read
-/// buffer". To access the latest data, it swaps the read buffer with the
-/// back buffer if the later contains more recent data, then reads from
-/// the (possibly new) read buffer.
+type TripleBufferIndex = usize;
+type AtomicTripleBufferIndex = AtomicUsize;
+
+
+/// Tests and benchmarks
 ///
-#[derive(Debug)]
-struct TripleBufferOutput<T: Clone + PartialEq> {
-    shared: Arc<TripleBufferSharedState<T>>,
-    read_idx: TripleBufferIndex,
-}
-//
-impl<T: Clone + PartialEq> TripleBufferOutput<T> {
-    /// Access the latest fully written value from the triple buffer
-    fn read(&mut self) -> &T {
-        // Access the shared state
-        let ref shared_state = *self.shared;
-        
-        // Check if the writer has submitted an update
-        let last_idx = shared_state.last_idx.load(Ordering::Acquire);
-
-        // If an update is pending in the back buffer, make it our read buffer
-        if self.read_idx != last_idx {
-            // Swap the back buffer and the read buffer. We get exclusive read
-            // access to the data, and the writer gets a new back buffer.
-            self.read_idx = shared_state.back_idx.swap(
-                self.read_idx,
-                Ordering::Acquire  // Another update could have occured...
-            );
-        }
-
-        // Access data from the current (exclusive-access) read buffer
-        let read_ptr = shared_state.buffers[self.read_idx].get();
-        unsafe { &*read_ptr }
-    }
-}
-
-
-/// ## Triple buffer
-///
-/// A triple buffer is a single-producer single-consumer nonblocking
-/// communication channel behaving like a shared variable: writer submits
-/// regular updates, reader accesses latest available value at any time.
-///
-#[derive(Debug)]
-struct TripleBuffer<T: Clone + PartialEq> {
-    input: TripleBufferInput<T>,
-    output: TripleBufferOutput<T>,
-}
-//
-impl<T: Clone + PartialEq> TripleBuffer<T> {
-    /// Construct a triple buffer with a certain initial value
-    fn new(initial: T) -> Self {
-        // Start with the shared state...
-        let shared_state = Arc::new(
-            TripleBufferSharedState {
-                buffers: [
-                    UnsafeCell::new(initial.clone()),
-                    UnsafeCell::new(initial.clone()),
-                    UnsafeCell::new(initial)
-                ],
-                back_idx: AtomicTripleBufferIndex::new(0),
-                last_idx: AtomicTripleBufferIndex::new(2),
-            }
-        );
-
-        // ...then construct the input and output structs
-        TripleBuffer {
-            input: TripleBufferInput {
-                shared: shared_state.clone(),
-                write_idx: 1,
-            },
-            output: TripleBufferOutput {
-                shared: shared_state,
-                read_idx: 2,
-            },
-        }
-    }
-}
-//
-impl<T: Clone + PartialEq> Clone for TripleBuffer<T> {
-    fn clone(&self) -> Self {
-        // Clone the shared state. This is safe because at this layer of the
-        // interface, one needs an Input/Output &mut to mutate the shared state.
-        let shared_state = Arc::new(
-            unsafe { (*self.input.shared).clone() }
-        );
-
-        // ...then the input and output structs
-        TripleBuffer {
-            input: TripleBufferInput {
-                shared: shared_state.clone(),
-                write_idx: self.input.write_idx,
-            },
-            output: TripleBufferOutput {
-                shared: shared_state,
-                read_idx: self.output.read_idx,
-            },
-        }
-    }
-}
-//
-impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
-    fn eq(&self, other: &Self) -> bool {
-        // Compare the shared states. This is safe because at this layer of the
-        // interface, one needs an Input/Output &mut to mutate the shared state.
-        let shared_states_equal = unsafe {
-            (*self.input.shared).eq(&*other.input.shared)
-        };
-
-        // Compare the rest of the triple buffer states
-        shared_states_equal &&
-        (self.input.write_idx == other.input.write_idx) &&
-        (self.output.read_idx == other.output.read_idx)
-    }
-}
-
-
-/// ## Testing
-///
-/// Unit tests and benchmarks for triple buffers
+/// Unit tests and benchmarks are provided to ease library evolution.
 ///
 #[cfg(test)]
 mod tests {
+    /// Unit tests
+    mod unit_tests {
+
+    // Dependencies of the unit tests
     use std::sync::Barrier;
-    use std::sync::atomic::AtomicBool;
     use std::thread;
-    use std::time::{Duration, Instant};
-
-
-    /// ### Unit tests
+    use std::time::Duration;
 
     /// Check that triple buffers are properly initialized
     #[test]
-    fn test_init() {
+    fn initial_state() {
         // Let's create a triple buffer
         let buf = ::TripleBuffer::new(42);
         
@@ -294,7 +303,7 @@ mod tests {
     
     /// Check that (sequentially) writing to a triple buffer works
     #[test]
-    fn test_seq_write() {
+    fn sequential_write() {
         // Let's create a triple buffer
         let mut buf = ::TripleBuffer::new(false);
 
@@ -339,7 +348,7 @@ mod tests {
     
     /// Check that (sequentially) reading from a triple buffer works
     #[test]
-    fn test_seq_read() {
+    fn sequential_read() {
         // Let's create a triple buffer and write into it
         let mut buf = ::TripleBuffer::new(1.0);
         buf.input.write(4.2);
@@ -401,7 +410,7 @@ mod tests {
     ///
     #[test]
     #[ignore]
-    fn test_concurrent_access() {
+    fn concurrent_access() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
         let test_write_count = 10000;
@@ -442,21 +451,36 @@ mod tests {
         // Wait for the writer to finish
         writer.join().unwrap();
     }
+    
+    /// Range check for triple buffer indexes
+    #[allow(unused_comparisons)]
+    fn index_in_range(idx: ::TripleBufferIndex) -> bool {
+        (idx >= 0) & (idx <= 2)
+    }
+    
+    }
 
 
-    /// ### Benchmarks
+    /// Benchmarks
     ///
     /// These benchmarks masquerading as tests are a stopgap solution until
     /// benchmarks land in stable Rust. They should be compiled in release mode,
-    /// and run with only one OS thread (RUST_TEST_THREADS=1). In addition,
-    /// the default behaviour of swallowing test output should be suppressed.
+    /// and run with only one OS thread. In addition, the default behaviour of
+    /// swallowing test output should obviously be suppressed.
     ///
     /// TL;DR: cargo test --release -- --ignored --nocapture --test-threads=1
+    mod benchmarks {
+
+    // Dependencies of the benchmarks
+    use std::sync::Barrier;
+    use std::sync::atomic::AtomicBool;
+    use std::thread;
+    use std::time::Instant;
 
     /// Benchmark for clean read performance
     #[test]
     #[ignore]
-    fn bench_clean_read() {
+    fn clean_read() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
@@ -473,7 +497,7 @@ mod tests {
     /// Benchmark for write performance
     #[test]
     #[ignore]
-    fn bench_write() {
+    fn write() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
@@ -488,7 +512,7 @@ mod tests {
     /// Benchmark for write + dirty read performance
     #[test]
     #[ignore]
-    fn bench_write_and_dirty_read() {
+    fn write_and_dirty_read() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
         
@@ -506,7 +530,7 @@ mod tests {
     /// Benchmark read performance under concurrent write pressure
     #[test]
     #[ignore]
-    fn bench_concurrent_read() {
+    fn concurrent_read() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
         
@@ -551,7 +575,7 @@ mod tests {
     /// Benchmark write performance under concurrent read pressure
     #[test]
     #[ignore]
-    fn bench_concurrent_write() {
+    fn concurrent_write() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
         
@@ -591,9 +615,6 @@ mod tests {
         reader.join().unwrap();
     }
 
-
-    /// ### Utilities
-
     /// Simple benchmark harness while I'm waiting for #[bench] to stabilize
     fn benchmark<F: FnMut(u32)>(num_iterations: u32,
                                 mut iteration: F) {
@@ -617,11 +638,7 @@ mod tests {
             iter_ns+1
         );
     }
-
-    /// Range check for triple buffer indexes
-    #[allow(unused_comparisons)]
-    fn index_in_range(idx: ::TripleBufferIndex) -> bool {
-        (idx >= 0) & (idx <= 2)
+    
     }
 }
 
