@@ -41,6 +41,7 @@ Compared to sending the updates on a message queue:
 - Only works in single-producer, single-consumer scenarios (queues can work in
   other scenarios, although the implementations are much less efficient)
 - Consumer only has access to the latest state, not the previous ones
+- Consumer does not *need* to get through every previous state
 - Is nonblocking AND uses bounded amounts of memory (must choose with queues)
 - Can transmit information in a single move, rather than two
 
