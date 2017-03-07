@@ -41,12 +41,14 @@ struct TripleBufferSharedState<T: Clone + PartialEq> {
     last_idx: AtomicTripleBufferIndex,
 }
 //
-impl<T: Clone + PartialEq> Clone for TripleBufferSharedState<T> {
-    fn clone(&self) -> Self {
-        // The use of UnsafeCell makes buffers somwhat cumbersome to clone...
+impl<T: Clone + PartialEq> TripleBufferSharedState<T> {
+    /// Cloning the shared state is unsafe because you must ensure that no one
+    /// is concurrently accessing it, since &self is enough for writing.
+    unsafe fn clone(&self) -> Self {
+        // The use of UnsafeCell makes buffers somewhat cumbersome to clone...
         let clone_buffer = | i: TripleBufferIndex | {
             UnsafeCell::new(
-                unsafe { (*self.buffers[i].get()).clone() }
+                (*self.buffers[i].get()).clone()
             )
         };
 
@@ -65,13 +67,13 @@ impl<T: Clone + PartialEq> Clone for TripleBufferSharedState<T> {
             ),
         }
     }
-}
-//
-impl<T: Clone + PartialEq> PartialEq for TripleBufferSharedState<T> {
-    fn eq(&self, other: &Self) -> bool {
-        // The use of UnsafeCell makes buffers somwhat cumbersome to compare...
+
+    /// Equality is unsafe for the same reason as cloning: you must ensure that
+    /// no one is concurrently accessing the triple buffer to avoid data races.
+    unsafe fn eq(&self, other: &Self) -> bool {
+        // The use of UnsafeCell makes buffers somewhat cumbersome to compare...
         let buffer_eq = | i: TripleBufferIndex | -> bool {
-            unsafe { *self.buffers[i].get() == *other.buffers[i].get() }
+            *self.buffers[i].get() == *other.buffers[i].get()
         };
 
         // ...and atomics aren't much better...
@@ -111,7 +113,7 @@ impl<T: Clone + PartialEq> TripleBufferInput<T> {
         // Determine which shared buffer is the write buffer
         let active_idx = self.write_idx;
 
-        // Move the input value into the write buffer
+        // Move the input value into the (exclusive-access) write buffer.
         let write_ptr = shared_state.buffers[active_idx].get();
         unsafe { *write_ptr = value; }
 
@@ -163,7 +165,7 @@ impl<T: Clone + PartialEq> TripleBufferOutput<T> {
             );
         }
 
-        // Access data from the current read buffer
+        // Access data from the current (exclusive-access) read buffer
         let read_ptr = shared_state.buffers[self.read_idx].get();
         unsafe { &*read_ptr }
     }
@@ -212,9 +214,10 @@ impl<T: Clone + PartialEq> TripleBuffer<T> {
 //
 impl<T: Clone + PartialEq> Clone for TripleBuffer<T> {
     fn clone(&self) -> Self {
-        // Clone the shared state...
+        // Clone the shared state. This is safe because at this layer of the
+        // interface, one needs an Input/Output &mut to mutate the shared state.
         let shared_state = Arc::new(
-            (*self.input.shared).clone()
+            unsafe { (*self.input.shared).clone() }
         );
 
         // ...then the input and output structs
@@ -233,7 +236,14 @@ impl<T: Clone + PartialEq> Clone for TripleBuffer<T> {
 //
 impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
     fn eq(&self, other: &Self) -> bool {
-        (*self.input.shared == *other.input.shared) &&
+        // Compare the shared states. This is safe because at this layer of the
+        // interface, one needs an Input/Output &mut to mutate the shared state.
+        let shared_states_equal = unsafe {
+            (*self.input.shared).eq(&*other.input.shared)
+        };
+
+        // Compare the rest of the triple buffer states
+        shared_states_equal &&
         (self.input.write_idx == other.input.write_idx) &&
         (self.output.read_idx == other.output.read_idx)
     }
