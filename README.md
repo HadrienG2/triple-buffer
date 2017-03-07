@@ -15,9 +15,9 @@ useful for the following class of thread synchronization problems:
 Compared to a mutex:
 
 - Only works in single-producer, single-consumer scenarios
-- Is bounded wait-free (concurrent accesses will be slightly slowed down by
-  cache contention, but no deadlock, livelock, or thread scheduling induced
-  slowdown is possible)
+- Is nonblocking, and more precisely bounded wait-free. Concurrent accesses will
+  be slowed down by cache contention, but no deadlock, livelock, or thread
+  scheduling induced slowdown is possible)
 - Allows the producer and consumer to work simultaneously
 - Uses a lot more memory (3x payload + 4 integers vs 1x payload + 1 bool)
 - Does not allow in-place updates, value must be cloned or moved
