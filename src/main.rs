@@ -376,7 +376,7 @@ mod tests {
     /// Check that concurrent reads and writes work
     ///
     /// **WARNING:** This test unfortunately needs to have timing-dependent
-    /// behaviour. If it fails for you, try the following:
+    /// behaviour to do its job. If it fails for you, try the following:
     ///
     /// - Close running applications in the background
     /// - Re-run the tests with only one OS thread (RUST_TEST_THREADS=1)
@@ -426,7 +426,11 @@ mod tests {
         writer.join().unwrap();
     }
 
-    // TODO: Benchmark the performance of concurrent reads and writes
+    // TODO: Benchmark the performance of the triple buffer:
+    //          - Writes only (writes/sec)
+    //          - Clean reads only (reads/sec)
+    //          - Dirty reads only (reads/sec)
+    //          - Concurrent reads&writes (reads/sec, writes/sec)
 
     /// Range check for triple buffer indexes
     #[allow(unused_comparisons)]
