@@ -7,9 +7,7 @@
 
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Barrier};
-use std::thread;
-use std::time::Duration;
+use std::sync::Arc;
 
 
 /// ## Indexing
@@ -256,6 +254,10 @@ impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
 ///
 #[cfg(test)]
 mod tests {
+    use std::sync::Barrier;
+    use std::thread;
+    use std::time::Duration;
+
     /// Test that triple buffers are properly initialized
     #[test]
     fn test_init() {
@@ -406,17 +408,17 @@ mod tests {
         let mut buf_input = buf.input;
 
         // Setup a barrier so that the reader & writer can start synchronously
-        let barrier = ::Arc::new(::Barrier::new(2));
+        let barrier = ::Arc::new(Barrier::new(2));
         let w_barrier = barrier.clone();
 
         // The writer continuously increments the buffered value, with some
         // rate limiting to ensure that the reader can see the updates
-        let writer = ::thread::spawn(move || {
+        let writer = thread::spawn(move || {
             w_barrier.wait();
             for value in 1 .. test_write_count+1 {
                 buf_input.write(value);
-                ::thread::yield_now();
-                ::thread::sleep(::Duration::from_millis(1));
+                thread::yield_now();
+                thread::sleep(Duration::from_millis(1));
             }
         });
         
