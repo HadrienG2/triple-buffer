@@ -469,6 +469,9 @@ mod tests {
     /// swallowing test output should obviously be suppressed.
     ///
     /// TL;DR: cargo test --release -- --ignored --nocapture --test-threads=1
+    ///
+    /// TODO: Switch to standard Rust benchmarks once they are stable
+    ///
     mod benchmarks {
 
     // Dependencies of the benchmarks
