@@ -471,10 +471,14 @@ mod tests {
             }
         );
 
-        // Benchmark reads under write pressure
+        // Benchmark concurrent reads
         {
             // Extract the buffer's input
             let (mut buf_input, mut buf_output) = (buf.input, buf.output);
+
+            // Set up a barrier so that we can wait for the writer to start
+            let barrier = ::Arc::new(Barrier::new(2));
+            let w_barrier = barrier.clone();
 
             // Set up a shared boolean flag so that they can stop together
             let run_flag = ::Arc::new(AtomicBool::new(true));
@@ -483,15 +487,19 @@ mod tests {
             // Set up a writer that continuously updates the shared value
             let writer = thread::spawn(move || {
                 let counter = 1;
+                w_barrier.wait();
                 while w_run_flag.load(::Ordering::Relaxed) {
                     buf_input.write(counter);
                     counter.wrapping_add(1);
                 }
             });
 
+            // Wait for the writer to be running
+            barrier.wait();
+
             // Benchmark reads
             benchmark(
-                "reads under write pressure",
+                "concurrent reads",
                 |iter| {
                     let read = *buf_output.read();
                     assert!(read < 4000000000);
