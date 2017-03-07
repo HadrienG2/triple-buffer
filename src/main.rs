@@ -119,11 +119,14 @@ impl<T: Clone + PartialEq> TripleBufferInput<T> {
         // block available to the reader and gives us a new buffer to write to.
         self.write_idx = shared_state.back_idx.swap(
             active_idx,
-            Ordering::Release  // Send previous updates to the reader
+            Ordering::Release  // Need this for new buffer state to be visible
         );
 
         // Notify the reader that we submitted an update
-        shared_state.last_idx.store(active_idx, Ordering::Relaxed);
+        shared_state.last_idx.store(
+            active_idx,
+            Ordering::Release  // Need this for back_idx to be visible
+        );
     }
 }
 
@@ -148,7 +151,7 @@ impl<T: Clone + PartialEq> TripleBufferOutput<T> {
         let ref shared_state = *self.shared;
         
         // Check if the writer has submitted an update
-        let last_idx = shared_state.last_idx.load(Ordering::Relaxed);
+        let last_idx = shared_state.last_idx.load(Ordering::Acquire);
 
         // If an update is pending in the back buffer, make it our read buffer
         if self.read_idx != last_idx {
@@ -156,7 +159,7 @@ impl<T: Clone + PartialEq> TripleBufferOutput<T> {
             // access to the data, and the writer gets a new back buffer.
             self.read_idx = shared_state.back_idx.swap(
                 self.read_idx,
-                Ordering::Acquire  // Synchronize with the writer's updates
+                Ordering::Acquire
             );
         }
 
