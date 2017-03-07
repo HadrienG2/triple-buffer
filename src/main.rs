@@ -383,10 +383,11 @@ mod tests {
     /// - Increase the writer sleep period below
     ///
     #[test]
+    #[ignore]
     fn test_conc_access() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
-        let test_write_count = 1000;
+        let test_write_count = 10000;
 
         // This is the buffer that our reader and writer will share
         let mut buf = ::TripleBuffer::new(0u64);
