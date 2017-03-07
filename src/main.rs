@@ -7,7 +7,7 @@
 
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 
@@ -373,7 +373,7 @@ mod tests {
         }
     }
 
-    // Check that concurrent reads and writes work
+    /// Check that concurrent reads and writes work
     #[test]
     fn test_conc_access() {
         // We will stress the infrastructure by performing this many writes
@@ -386,10 +386,14 @@ mod tests {
         // Extract the input stage so that we can send it to the writer
         let mut buf_input = buf.input;
 
+        // Setup a barrier so that the reader & writer can start synchronously
+        let barrier = ::Arc::new(::Barrier::new(2));
+        let w_barrier = barrier.clone();
+
         // The writer continuously increments the buffered value, with some
         // rate limiting to ensure that the reader can see the updates
         let writer = ::thread::spawn(move || {
-            // TODO: Use a barrier here instead
+            w_barrier.wait();
             for value in 1 .. test_write_count+1 {
                 buf_input.write(value);
                 ::thread::yield_now();
@@ -400,6 +404,7 @@ mod tests {
         // The reader continuously checks the buffered value, and should see
         // every update without any incoherent value
         let mut last_value = 0u64;
+        barrier.wait();
         while last_value < test_write_count {
             let new_value = *buf.output.read();
             assert!(
