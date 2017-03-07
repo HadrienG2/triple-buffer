@@ -171,7 +171,9 @@ impl<T: Clone + PartialEq> TripleBufferOutput<T> {
 
 /// ## Triple buffer
 ///
-/// A triple buffer is created as the combination of an input and an output.
+/// A triple buffer is a single-producer single-consumer nonblocking
+/// communication channel behaving like a shared variable: writer submits
+/// regular updates, reader accesses latest available value at any time.
 ///
 #[derive(Debug)]
 struct TripleBuffer<T: Clone + PartialEq> {
@@ -261,7 +263,7 @@ mod tests {
 
     /// ### Unit tests
 
-    /// Test that triple buffers are properly initialized
+    /// Check that triple buffers are properly initialized
     #[test]
     fn test_init() {
         // Let's create a triple buffer
@@ -290,7 +292,7 @@ mod tests {
         assert_eq!(last_idx, buf.output.read_idx);
     }
     
-    /// Test that (sequentially) writing to a triple buffer works
+    /// Check that (sequentially) writing to a triple buffer works
     #[test]
     fn test_seq_write() {
         // Let's create a triple buffer
@@ -394,7 +396,7 @@ mod tests {
     /// behaviour to do its job. If it fails for you, try the following:
     ///
     /// - Close running applications in the background
-    /// - Re-run the tests with only one OS thread (RUST_TEST_THREADS=1)
+    /// - Re-run the tests with only one OS thread (--test-threads=1)
     /// - Increase the writer sleep period
     ///
     #[test]
@@ -442,7 +444,14 @@ mod tests {
     }
 
 
-    /// ### Benchmarks (run in release mode and with RUST_TEST_THREADS=1)
+    /// ### Benchmarks
+    ///
+    /// These benchmarks masquerading as tests are a stopgap solution until
+    /// benchmarks land in stable Rust. They should be compiled in release mode,
+    /// and run with only one OS thread (RUST_TEST_THREADS=1). In addition,
+    /// the default behaviour of swallowing test output should be suppressed.
+    ///
+    /// TL;DR: cargo test --release -- --ignored --nocapture --test-threads=1
 
     /// Benchmark for clean read performance
     #[test]
