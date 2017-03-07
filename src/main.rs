@@ -53,6 +53,11 @@ impl<T: Clone + PartialEq> TripleBuffer<T> {
             },
         }
     }
+
+    /// Extract input and output of the triple buffer
+    pub fn split(self) -> (TripleBufferInput<T>, TripleBufferOutput<T>) {
+        (self.input, self.output)
+    }
 }
 //
 // The Clone and PartialEq traits are used internally for testing.
@@ -155,7 +160,7 @@ impl<T: Clone + PartialEq> TripleBufferOutput<T> {
     pub fn read(&mut self) -> &T {
         // Access the shared state
         let ref shared_state = *self.shared;
-        
+
         // Check if the writer has submitted an update
         let last_idx = shared_state.last_idx.load(Ordering::Acquire);
 
@@ -237,7 +242,7 @@ impl<T: Clone + PartialEq> TripleBufferSharedState<T> {
                            y: &AtomicTripleBufferIndex | -> bool {
             x.load(Ordering::Relaxed) == y.load(Ordering::Relaxed)
         };
-        
+
         // ...so better define some shortcuts before getting started:
         buffer_eq(0) && buffer_eq(1) && buffer_eq(2) &&
         atomics_eq(&self.back_idx, &other.back_idx) &&
@@ -277,7 +282,7 @@ mod tests {
     fn initial_state() {
         // Let's create a triple buffer
         let buf = ::TripleBuffer::new(42);
-        
+
         // Access the shared state
         let ref buf_shared = *buf.input.shared;
         let back_idx = buf_shared.back_idx.load(::Ordering::Relaxed);
@@ -300,7 +305,7 @@ mod tests {
         // Last-written index must initially point to the read buffer
         assert_eq!(last_idx, buf.output.read_idx);
     }
-    
+
     /// Check that (sequentially) writing to a triple buffer works
     #[test]
     fn sequential_write() {
@@ -319,7 +324,7 @@ mod tests {
             // Starting from the old buffer state...
             let mut expected_buf = old_buf.clone();
             let ref expected_shared = expected_buf.input.shared;
-            
+
             // We expect the former write buffer to have received the new value
             let old_write_idx = old_buf.input.write_idx;
             let write_buf_ptr = expected_shared.buffers[old_write_idx].get();
@@ -345,7 +350,7 @@ mod tests {
             assert_eq!(buf, expected_buf);
         }
     }
-    
+
     /// Check that (sequentially) reading from a triple buffer works
     #[test]
     fn sequential_read() {
@@ -416,10 +421,10 @@ mod tests {
         let test_write_count = 10000;
 
         // This is the buffer that our reader and writer will share
-        let mut buf = ::TripleBuffer::new(0u64);
+        let buf = ::TripleBuffer::new(0u64);
 
         // Extract the input stage so that we can send it to the writer
-        let mut buf_input = buf.input;
+        let (mut buf_input, mut buf_output) = buf.split();
 
         // Setup a barrier so that the reader & writer can start synchronously
         let barrier = ::Arc::new(Barrier::new(2));
@@ -435,13 +440,13 @@ mod tests {
                 thread::sleep(Duration::from_millis(1));
             }
         });
-        
+
         // The reader continuously checks the buffered value, and should see
         // every update without any incoherent value
         let mut last_value = 0u64;
         barrier.wait();
         while last_value < test_write_count {
-            let new_value = *buf.output.read();
+            let new_value = *buf_output.read();
             assert!(
                 (new_value >= last_value) && (new_value-last_value <= 1)
             );
@@ -451,13 +456,13 @@ mod tests {
         // Wait for the writer to finish
         writer.join().unwrap();
     }
-    
+
     /// Range check for triple buffer indexes
     #[allow(unused_comparisons)]
     fn index_in_range(idx: ::TripleBufferIndex) -> bool {
         (idx >= 0) & (idx <= 2)
     }
-    
+
     }
 
 
@@ -511,14 +516,13 @@ mod tests {
         );
     }
 
-
     /// Benchmark for write + dirty read performance
     #[test]
     #[ignore]
     fn write_and_dirty_read() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
-        
+
         // Benchmark writes + dirty reads
         benchmark(
             220000000u32,
@@ -536,9 +540,9 @@ mod tests {
     fn concurrent_read() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
-        
+
         // Extract the triple buffer's input and output
-        let (mut buf_input, mut buf_output) = (buf.input, buf.output);
+        let (mut buf_input, mut buf_output) = buf.split();
 
         // Set up a barrier so that we can wait for the writer to start
         let barrier = ::Arc::new(Barrier::new(2));
@@ -581,9 +585,9 @@ mod tests {
     fn concurrent_write() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
-        
+
         // Extract the triple buffer's input and output
-        let (mut buf_input, mut buf_output) = (buf.input, buf.output);
+        let (mut buf_input, mut buf_output) = buf.split();
 
         // Set up a barrier so that we can wait for the reader to start
         let barrier = ::Arc::new(Barrier::new(2));
@@ -641,17 +645,17 @@ mod tests {
             iter_ns+1
         );
     }
-    
+
     }
 }
 
 
 fn main() {
-    println!("Hello, world!");
+    let buf = TripleBuffer::new("Hello!");
+    let (mut buf_input, mut buf_output) = buf.split();
 
-    let mut buf = TripleBuffer::new("Hello!");
-    println!("Initial value is {}", buf.output.read());
+    println!("Initial value is {}", buf_output.read());
 
-    buf.input.write("World!");
-    println!("New value is {}", buf.output.read())
+    buf_input.write("World!");
+    println!("New value is {}", buf_output.read())
 }
