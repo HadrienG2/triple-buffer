@@ -26,7 +26,7 @@ type AtomicTripleBufferIndex = AtomicUsize;
 /// the following storage:
 ///
 /// - Three memory buffers suitable for storing the data at hand
-/// - One index pointing to the buffer which no one is currently using
+/// - One index pointing to the "back" buffer, which no one is currently using
 /// - One index pointing to the most recently updated buffer
 ///
 #[derive(Debug)]
@@ -93,8 +93,8 @@ unsafe impl<T: Clone + PartialEq> Sync for TripleBufferSharedState<T> {}
 /// ## Producing data ("input")
 ///
 /// The producer of data has exclusive write access to the so-called "write
-/// buffer". To send an update, it writes it into the back buffer, then swaps
-/// the write buffer with the back buffer, making the data readable.
+/// buffer". To send an update, it writes it into the write buffer, then swaps
+/// the write buffer with the back buffer, making the data accessible.
 ///
 #[derive(Debug)]
 struct TripleBufferInput<T: Clone + PartialEq> {
@@ -159,7 +159,7 @@ impl<T: Clone + PartialEq> TripleBufferOutput<T> {
             // access to the data, and the writer gets a new back buffer.
             self.read_idx = shared_state.back_idx.swap(
                 self.read_idx,
-                Ordering::Acquire
+                Ordering::Acquire  // Another update could have occured...
             );
         }
 
@@ -290,7 +290,7 @@ mod tests {
 
         // Check new implementation state
         {
-            // Start from the old buffer state
+            // Starting from the old buffer state...
             let mut expected_buf = old_buf.clone();
             let ref expected_shared = expected_buf.input.shared;
             
@@ -339,7 +339,7 @@ mod tests {
             // Output value should be correct
             assert_eq!(result, 4.2);
 
-            // Start from the old buffer state
+            // Starting from the old buffer state...
             let mut expected_buf = old_buf.clone();
             let ref expected_shared = expected_buf.input.shared;
 
@@ -374,6 +374,14 @@ mod tests {
     }
 
     /// Check that concurrent reads and writes work
+    ///
+    /// **WARNING:** This test unfortunately needs to have timing-dependent
+    /// behaviour. If it fails for you, try the following:
+    ///
+    /// - Close running applications in the background
+    /// - Re-run the tests with only one OS thread (RUST_TEST_THREADS=1)
+    /// - Increase the writer sleep period below
+    ///
     #[test]
     fn test_conc_access() {
         // We will stress the infrastructure by performing this many writes
