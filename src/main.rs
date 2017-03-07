@@ -444,105 +444,128 @@ mod tests {
 
     /// ### Benchmarks (run in release mode and with RUST_TEST_THREADS=1)
 
-    /// TODO: Extract each benchmark to a separate function
+    /// Benchmark for clean read performance
     #[test]
     #[ignore]
-    fn run_benchmarks() {
-
+    fn bench_clean_reads() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark clean reads
         benchmark(
-            "clean reads",
+            2500000000u32,
             |iter| {
                 let read = *buf.output.read();
                 assert!(read < 4000000000);
             }
         );
+    }
+
+    /// Benchmark for write performance
+    #[test]
+    #[ignore]
+    fn bench_writes() {
+        // Create a buffer
+        let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark writes
         benchmark(
-            "writes",
+            300000000u32,
             |iter| buf.input.write(iter)
         );
+    }
+
+
+    /// Benchmark for write + dirty read performance
+    #[test]
+    #[ignore]
+    fn bench_write_and_dirty_read() {
+        // Create a buffer
+        let mut buf = ::TripleBuffer::new(0u32);
         
         // Benchmark writes + dirty reads
         benchmark(
-            "writes + dirty reads",
+            200000000u32,
             |iter| {
                 buf.input.write(iter);
                 let read = *buf.output.read();
                 assert!(read < 4000000000);
             }
         );
-
-        // Benchmark concurrent reads
-        {
-            // Extract the buffer's input
-            let (mut buf_input, mut buf_output) = (buf.input, buf.output);
-
-            // Set up a barrier so that we can wait for the writer to start
-            let barrier = ::Arc::new(Barrier::new(2));
-            let w_barrier = barrier.clone();
-
-            // Set up a shared boolean flag so that we can stop the writer
-            let run_flag = ::Arc::new(AtomicBool::new(true));
-            let w_run_flag = run_flag.clone();
-
-            // Set up a writer that continuously updates the shared value
-            let writer = thread::spawn(move || {
-                let counter = 1;
-                w_barrier.wait();
-                while w_run_flag.load(::Ordering::Relaxed) {
-                    buf_input.write(counter);
-                    counter.wrapping_add(1);
-                }
-            });
-
-            // Wait for the writer to be running
-            barrier.wait();
-
-            // Benchmark reads
-            benchmark(
-                "concurrent reads",
-                |iter| {
-                    let read = *buf_output.read();
-                    assert!(read < 4000000000);
-                }
-            );
-
-            // Tell the writer to stop
-            run_flag.store(false, ::Ordering::Relaxed);
-            writer.join().unwrap();
-        }
-
-        // TODO: Benchmark writes under read pressure
     }
+
+    /// Benchmark read performance under concurrent writes
+    #[test]
+    #[ignore]
+    fn bench_concurrent_reads() {
+        // Create a buffer
+        let mut buf = ::TripleBuffer::new(0u32);
+        
+        // Extract the triple buffer's input and output
+        let (mut buf_input, mut buf_output) = (buf.input, buf.output);
+
+        // Set up a barrier so that we can wait for the writer to start
+        let barrier = ::Arc::new(Barrier::new(2));
+        let w_barrier = barrier.clone();
+
+        // Set up a shared boolean flag so that we can stop the writer
+        let run_flag = ::Arc::new(AtomicBool::new(true));
+        let w_run_flag = run_flag.clone();
+
+        // Set up a writer that continuously updates the shared value
+        let writer = thread::spawn(move || {
+            let counter = 1;
+            w_barrier.wait();
+            while w_run_flag.load(::Ordering::Relaxed) {
+                buf_input.write(counter);
+                counter.wrapping_add(1);
+            }
+        });
+
+        // Wait for the writer to be running
+        barrier.wait();
+
+        // Benchmark reads
+        benchmark(
+            30000000u32,
+            |iter| {
+                let read = *buf_output.read();
+                assert!(read < 4000000000);
+            }
+        );
+
+        // Tell the writer to stop
+        run_flag.store(false, ::Ordering::Relaxed);
+        writer.join().unwrap();
+    }
+
+    // TODO: Benchmark writes under read pressure
 
 
     /// ### Utilities
 
     /// Simple benchmark harness while I'm waiting for #[bench] to stabilize
-    fn benchmark<F: FnMut(u32)>(subject: &str, mut iteration: F) {
-        // Print an intro message
-        print!("Benchmarking {}... ", subject);
-
-        // For now, all benchmarks perfom the same amount of iterations
-        let num_iters = 100000000u32;
-
-        // Benchmark loop
+    fn benchmark<F: FnMut(u32)>(num_iterations: u32,
+                                mut iteration: F) {
+        // Run benchmark loop
         let start_time = Instant::now();
-        for iter in 1 .. num_iters {
+        for iter in 1 .. num_iterations {
             iteration(iter)
         }
         let total_duration = start_time.elapsed();
 
-        // Display the results
+        // Put results in readable units
         let total_ms = (total_duration.as_secs() as u32) * 1000
                      + total_duration.subsec_nanos() / 1000000;
-        let iter_ns = (total_duration / num_iters).subsec_nanos();
-        println!("{} ms ({} ns/iter)", total_ms, iter_ns);
+        let iter_ns = (total_duration / num_iterations).subsec_nanos();
+
+        // Display the results
+        print!(
+            "{} ms ({} iters, <{} ns/iter): ",
+            total_ms,
+            num_iterations,
+            iter_ns+1
+        );
     }
 
     /// Range check for triple buffer indexes
