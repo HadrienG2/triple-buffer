@@ -399,7 +399,7 @@ mod tests {
     ///
     #[test]
     #[ignore]
-    fn test_conc_access() {
+    fn test_concurrent_access() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
         let test_write_count = 10000;
@@ -447,16 +447,16 @@ mod tests {
     /// Benchmark for clean read performance
     #[test]
     #[ignore]
-    fn bench_clean_reads() {
+    fn bench_clean_read() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark clean reads
         benchmark(
-            2500000000u32,
+            4000000000u32,
             |iter| {
                 let read = *buf.output.read();
-                assert!(read < 4000000000);
+                assert!(read < u32::max_value());
             }
         );
     }
@@ -464,13 +464,13 @@ mod tests {
     /// Benchmark for write performance
     #[test]
     #[ignore]
-    fn bench_writes() {
+    fn bench_write() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark writes
         benchmark(
-            300000000u32,
+            440000000u32,
             |iter| buf.input.write(iter)
         );
     }
@@ -485,21 +485,21 @@ mod tests {
         
         // Benchmark writes + dirty reads
         benchmark(
-            200000000u32,
+            220000000u32,
             |iter| {
                 buf.input.write(iter);
                 let read = *buf.output.read();
-                assert!(read < 4000000000);
+                assert!(read < u32::max_value());
             }
         );
     }
 
-    /// Benchmark read performance under concurrent writes
+    /// Benchmark read performance under concurrent write pressure
     #[test]
     #[ignore]
-    fn bench_concurrent_reads() {
+    fn bench_concurrent_read() {
         // Create a buffer
-        let mut buf = ::TripleBuffer::new(0u32);
+        let buf = ::TripleBuffer::new(0u32);
         
         // Extract the triple buffer's input and output
         let (mut buf_input, mut buf_output) = (buf.input, buf.output);
@@ -527,10 +527,10 @@ mod tests {
 
         // Benchmark reads
         benchmark(
-            30000000u32,
+            40000000u32,
             |iter| {
                 let read = *buf_output.read();
-                assert!(read < 4000000000);
+                assert!(read < u32::max_value());
             }
         );
 
@@ -539,7 +539,48 @@ mod tests {
         writer.join().unwrap();
     }
 
-    // TODO: Benchmark writes under read pressure
+    /// Benchmark write performance under concurrent read pressure
+    #[test]
+    #[ignore]
+    fn bench_concurrent_write() {
+        // Create a buffer
+        let buf = ::TripleBuffer::new(0u32);
+        
+        // Extract the triple buffer's input and output
+        let (mut buf_input, mut buf_output) = (buf.input, buf.output);
+
+        // Set up a barrier so that we can wait for the reader to start
+        let barrier = ::Arc::new(Barrier::new(2));
+        let r_barrier = barrier.clone();
+
+        // Set up a shared boolean flag so that we can stop the reader
+        let run_flag = ::Arc::new(AtomicBool::new(true));
+        let r_run_flag = run_flag.clone();
+
+        // Set up a reader that continuously accesses the shared value
+        let reader = thread::spawn(move || {
+            r_barrier.wait();
+            while r_run_flag.load(::Ordering::Relaxed) {
+                let read = *buf_output.read();
+                assert!(read < u32::max_value());
+            }
+        });
+
+        // Wait for the reader to be running
+        barrier.wait();
+
+        // Benchmark writes
+        benchmark(
+            60000000u32,
+            |iter| {
+                buf_input.write(iter);
+            }
+        );
+
+        // Tell the reader to stop
+        run_flag.store(false, ::Ordering::Relaxed);
+        reader.join().unwrap();
+    }
 
 
     /// ### Utilities
