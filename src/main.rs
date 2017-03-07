@@ -44,7 +44,7 @@ impl<T: Clone + PartialEq> TripleBufferSharedState<T> {
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
         // The use of UnsafeCell makes buffers somewhat cumbersome to clone...
-        let clone_buffer = | i: TripleBufferIndex | {
+        let clone_buffer = | i: TripleBufferIndex | -> UnsafeCell<T> {
             UnsafeCell::new(
                 (*self.buffers[i].get()).clone()
             )
