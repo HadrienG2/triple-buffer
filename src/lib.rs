@@ -1,8 +1,31 @@
-//! A triple buffering implementation
+//! Triple buffering in Rust
 //!
-//! In this crate, we attempt to implement a triple buffering mechanism,
-//! suitable for emulating shared memory cells in a thread-safe and
-//! non-blocking fashion between one single writer and one single reader.
+//! In this crate, we propose a Rust implementation of triple buffering. This is
+//! a non-blocking thread synchronization mechanism that can be used when a
+//! single producer thread is frequently updating a shared data block, and a
+//! single consumer thread wants to be able to read the latest available version
+//! of the shared data whenever it feels like it.
+//!
+//! # Examples
+//!
+//! ```
+//! // Create a triple buffer of any Clone type:
+//! use triple_buffer::TripleBuffer;
+//! let buf = TripleBuffer::new(0);
+//!
+//! // Split it into an input and output interface, to be respectively sent to
+//! // the producer thread and the consumer thread:
+//! let (mut buf_input, mut buf_output) = buf.split();
+//!
+//! // The producer can move a value into the buffer at any time
+//! buf_input.write(42);
+//!
+//! // The consumer can access the latest value from the producer at any time
+//! let latest_value_ref = buf_output.read();
+//! assert_eq!(*latest_value_ref, 42);
+//! ```
+
+#![deny(missing_docs)]
 
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
