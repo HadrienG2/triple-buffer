@@ -9,6 +9,23 @@ useful for the following class of thread synchronization problems:
 - The producer wants to update a shared memory value frequently
 - The consumer wants to access the latest update from the producer
 
+It is currently used as follows:
+
+```rust
+// Create a buffer of any Clone type
+let buf = TripleBuffer::new("Hello");
+
+// Split it into an input and output interface, which will
+// be respectively sent to the producer and consumer thread
+let (mut buf_input, mut buf_output) = buf.split();
+
+// The producer can move a value into the buffer at any time
+buf_input.write("world");
+
+// The consumer can access the latest value from the producer at any time
+let ref latest_value = buf_output.read();
+```
+
 
 ## Give me details! How does it compare to alternatives?
 
