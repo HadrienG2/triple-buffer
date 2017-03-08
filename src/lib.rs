@@ -640,14 +640,3 @@ mod benchmarks {
         );
     }
 }
-
-
-fn main() {
-    let buf = TripleBuffer::new("Hello!");
-    let (mut buf_input, mut buf_output) = buf.split();
-
-    println!("Initial value is {}", buf_output.read());
-
-    buf_input.write("World!");
-    println!("New value is {}", buf_output.read())
-}
