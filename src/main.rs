@@ -265,14 +265,10 @@ type AtomicTripleBufferIndex = AtomicUsize;
 
 /// Tests and benchmarks
 ///
-/// Unit tests and benchmarks are provided to ease library evolution.
+/// Unit tests are provided to ease library evolution.
 ///
 #[cfg(test)]
 mod tests {
-    /// Unit tests
-    mod unit_tests {
-
-    // Dependencies of the unit tests
     use std::sync::Barrier;
     use std::thread;
     use std::time::Duration;
@@ -462,24 +458,22 @@ mod tests {
     fn index_in_range(idx: ::TripleBufferIndex) -> bool {
         (idx >= 0) & (idx <= 2)
     }
+}
 
-    }
 
-
-    /// Benchmarks
-    ///
-    /// These benchmarks masquerading as tests are a stopgap solution until
-    /// benchmarks land in stable Rust. They should be compiled in release mode,
-    /// and run with only one OS thread. In addition, the default behaviour of
-    /// swallowing test output should obviously be suppressed.
-    ///
-    /// TL;DR: cargo test --release -- --ignored --nocapture --test-threads=1
-    ///
-    /// TODO: Switch to standard Rust benchmarks once they are stable
-    ///
-    mod benchmarks {
-
-    // Dependencies of the benchmarks
+/// Performance benchmarks
+///
+/// These benchmarks masquerading as tests are a stopgap solution until
+/// benchmarking lands in Stable Rust. They should be compiled in release mode,
+/// and run with only one OS thread. In addition, the default behaviour of
+/// swallowing test output should obviously be suppressed.
+///
+/// TL;DR: cargo test --release -- --ignored --nocapture --test-threads=1
+///
+/// TODO: Switch to standard Rust benchmarks once they are stable
+///
+#[cfg(test)]
+mod benchmarks {
     use std::sync::Barrier;
     use std::sync::atomic::AtomicBool;
     use std::thread;
@@ -644,8 +638,6 @@ mod tests {
             num_iterations,
             iter_ns+1
         );
-    }
-
     }
 }
 
