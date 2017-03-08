@@ -12,18 +12,19 @@ useful for the following class of thread synchronization problems:
 It is currently used as follows:
 
 ```rust
-// Create a buffer of any Clone type
-let buf = TripleBuffer::new("Hello");
+// Create a triple buffer of any Clone type:
+let buf = TripleBuffer::new(0);
 
-// Split it into an input and output interface, which will
-// be respectively sent to the producer and consumer thread
+// Split it into an input and output interface, to be respectively sent to
+// the producer thread and the consumer thread:
 let (mut buf_input, mut buf_output) = buf.split();
 
 // The producer can move a value into the buffer at any time
-buf_input.write("world");
+buf_input.write(42);
 
 // The consumer can access the latest value from the producer at any time
-let ref latest_value = buf_output.read();
+let latest_value_ref = buf_output.read();
+assert_eq!(*latest_value_ref, 42);
 ```
 
 
