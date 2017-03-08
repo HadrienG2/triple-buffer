@@ -264,10 +264,7 @@ type TripleBufferIndex = usize;
 type AtomicTripleBufferIndex = AtomicUsize;
 
 
-/// Tests and benchmarks
-///
-/// Unit tests are provided to ease library evolution.
-///
+/// Unit tests
 #[cfg(test)]
 mod tests {
     use std::sync::Barrier;
