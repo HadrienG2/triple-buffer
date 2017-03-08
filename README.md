@@ -7,7 +7,7 @@ useful for the following class of thread synchronization problems:
 
 - There is one producer thread and one consumer thread
 - The producer wants to update a shared memory value frequently
-- The consumer wants to access the latest update from the producer
+- The consumer wants to access the latest update from the producer at any time
 
 It is currently used as follows:
 
