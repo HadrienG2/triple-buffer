@@ -43,12 +43,12 @@ use std::sync::Arc;
 /// TripleBuffer struct after construction, and are further documented below.
 ///
 #[derive(Debug)]
-pub struct TripleBuffer<T: Clone + PartialEq> {
+pub struct TripleBuffer<T: Clone + PartialEq + Send> {
     input: TripleBufferInput<T>,
     output: TripleBufferOutput<T>,
 }
 //
-impl<T: Clone + PartialEq> TripleBuffer<T> {
+impl<T: Clone + PartialEq + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
     pub fn new(initial: T) -> Self {
         // Start with the shared state...
@@ -85,7 +85,7 @@ impl<T: Clone + PartialEq> TripleBuffer<T> {
 //
 // The Clone and PartialEq traits are used internally for testing.
 //
-impl<T: Clone + PartialEq> Clone for TripleBuffer<T> {
+impl<T: Clone + PartialEq + Send> Clone for TripleBuffer<T> {
     fn clone(&self) -> Self {
         // Clone the shared state. This is safe because at this layer of the
         // interface, one needs an Input/Output &mut to mutate the shared state.
@@ -107,7 +107,7 @@ impl<T: Clone + PartialEq> Clone for TripleBuffer<T> {
     }
 }
 //
-impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
+impl<T: Clone + PartialEq + Send> PartialEq for TripleBuffer<T> {
     fn eq(&self, other: &Self) -> bool {
         // Compare the shared states. This is safe because at this layer of the
         // interface, one needs an Input/Output &mut to mutate the shared state.
@@ -131,12 +131,12 @@ impl<T: Clone + PartialEq> PartialEq for TripleBuffer<T> {
 /// and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct TripleBufferInput<T: Clone + PartialEq> {
+pub struct TripleBufferInput<T: Clone + PartialEq + Send> {
     shared: Arc<TripleBufferSharedState<T>>,
     write_idx: TripleBufferIndex,
 }
 //
-impl<T: Clone + PartialEq> TripleBufferInput<T> {
+impl<T: Clone + PartialEq + Send> TripleBufferInput<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
         // Access the shared state
@@ -173,12 +173,12 @@ impl<T: Clone + PartialEq> TripleBufferInput<T> {
 /// but deadlocks and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct TripleBufferOutput<T: Clone + PartialEq> {
+pub struct TripleBufferOutput<T: Clone + PartialEq + Send> {
     shared: Arc<TripleBufferSharedState<T>>,
     read_idx: TripleBufferIndex,
 }
 //
-impl<T: Clone + PartialEq> TripleBufferOutput<T> {
+impl<T: Clone + PartialEq + Send> TripleBufferOutput<T> {
     /// Access the latest value from the triple buffer
     pub fn read(&mut self) -> &T {
         // Access the shared state
@@ -214,7 +214,7 @@ impl<T: Clone + PartialEq> TripleBufferOutput<T> {
 /// - One index pointing to the most recently updated buffer
 ///
 #[derive(Debug)]
-struct TripleBufferSharedState<T: Clone + PartialEq> {
+struct TripleBufferSharedState<T: Clone + PartialEq + Send> {
     /// Data storage buffers
     buffers: [UnsafeCell<T>; 3],
 
@@ -225,7 +225,7 @@ struct TripleBufferSharedState<T: Clone + PartialEq> {
     last_idx: AtomicTripleBufferIndex,
 }
 //
-impl<T: Clone + PartialEq> TripleBufferSharedState<T> {
+impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
     /// Cloning the shared state is unsafe because you must ensure that no one
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
@@ -274,7 +274,7 @@ impl<T: Clone + PartialEq> TripleBufferSharedState<T> {
     }
 }
 //
-unsafe impl<T: Clone + PartialEq> Sync for TripleBufferSharedState<T> {}
+unsafe impl<T: Clone + PartialEq + Send> Sync for TripleBufferSharedState<T> {}
 
 
 /// Index types used for triple buffering
