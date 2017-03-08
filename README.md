@@ -89,32 +89,32 @@ Then we have a concurrent test where a reader thread continuously observes the
 values from a rate-limited writer thread, and makes sure that he can see every
 single update without any incorrect value slipping in the middle.
 
-This test is a lot more powerful, but it is also more tricky to run because the
-following conditions must be met:
+This test is more important, but it is also harder to run because one must first
+check some assumptions:
 
-- The testing host must have at least two physical CPU cores
-- No other application should be consuming CPU in the background. This includes
-  other tests, so multi-threaded testing should be disabled.
-- The proper writing rate is OS- and hardware-dependent, what is configured in
-  this test may not be the proper value for your machine.
+- The testing host must have at least 2 physical CPU cores to test all possible
+  race conditions
+- No other code should be eating CPU in the background. Including other tests.
+- As the proper writing rate is system-dependent, what is configured in this
+  test may not be appropriate for your machine.
 
-For these reasons, and because this tests also takes quite a lot of time to run
-(about 10 seconds), this test is ignored by default.
+Taking this and the relatively long run time (~10 s) into account, this test is
+ignored by default.
 
 Finally, we have benchmarks, which allow you to test how well the code is
 performing on your machine. Because cargo bench has not yet landed in Stable
 Rust, these benchmarks masquerade as tests, which make them a bit unpleasant to
 run. I apologize for the inconvenience.
 
-To run the concurrent test and the benchmarks, make sure that all your
-background applications are closed or CPU-quiet, then do:
+To run the concurrent test and the benchmarks, make sure no one is eating CPU in
+the background and do:
 
     $ cargo test --release -- --ignored --nocapture --test-threads=1
 
-Here is how the benchmarking results should be interpreted:
+Here is a guide to interpreting the benchmark results:
 
-* `clean_read` measures the triple buffer readout performance when the data does
-  not change. It should be extremely fast (a couple of CPU clock cycles).
+* `clean_read` measures the triple buffer readout time when the data has not
+  changed. It should be extremely fast (a couple of CPU clock cycles).
 * `write` measures the amount of time it takes to write data in the triple
   buffer when no one is reading.
 * `write_and_dirty_read` performs a write as before, immediately followed by a
