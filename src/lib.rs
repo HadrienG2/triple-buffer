@@ -213,19 +213,20 @@ impl<T: Clone + PartialEq> TripleBufferSharedState<T> {
             )
         };
 
-        // ...so better define a shortcut before we move on to actual cloning
+        // ...and atomics aren't much better...
+        let clone_atomic = | ai: &AtomicTripleBufferIndex | {
+            AtomicTripleBufferIndex::new(ai.load(Ordering::Relaxed))
+        };
+
+        // ...so better define some shortcuts before getting started:
         TripleBufferSharedState {
             buffers: [
                 clone_buffer(0),
                 clone_buffer(1),
                 clone_buffer(2),
             ],
-            back_idx: AtomicTripleBufferIndex::new(
-                self.back_idx.load(Ordering::Relaxed)
-            ),
-            last_idx: AtomicTripleBufferIndex::new(
-                self.last_idx.load(Ordering::Relaxed)
-            ),
+            back_idx: clone_atomic(&self.back_idx),
+            last_idx: clone_atomic(&self.last_idx),
         }
     }
 
