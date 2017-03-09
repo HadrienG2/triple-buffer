@@ -44,7 +44,10 @@ use std::sync::Arc;
 ///
 #[derive(Debug)]
 pub struct TripleBuffer<T: Clone + PartialEq + Send> {
+    /// Input object used by producers to send updates
     input: TripleBufferInput<T>,
+
+    /// Output object used by consumers to read the current value
     output: TripleBufferOutput<T>,
 }
 //
@@ -132,7 +135,10 @@ impl<T: Clone + PartialEq + Send> PartialEq for TripleBuffer<T> {
 ///
 #[derive(Debug)]
 pub struct TripleBufferInput<T: Clone + PartialEq + Send> {
+    /// Reference-counted shared state
     shared: Arc<TripleBufferSharedState<T>>,
+
+    /// Index of the write buffer (which is private to the producer)
     write_idx: TripleBufferIndex,
 }
 //
@@ -174,7 +180,10 @@ impl<T: Clone + PartialEq + Send> TripleBufferInput<T> {
 ///
 #[derive(Debug)]
 pub struct TripleBufferOutput<T: Clone + PartialEq + Send> {
+    /// Reference-counted shared state
     shared: Arc<TripleBufferSharedState<T>>,
+
+    /// Index of the read buffer (which is private to the consumer)
     read_idx: TripleBufferIndex,
 }
 //
@@ -218,10 +227,10 @@ struct TripleBufferSharedState<T: Clone + PartialEq + Send> {
     /// Data storage buffers
     buffers: [UnsafeCell<T>; 3],
 
-    /// Index of the back-buffer (which no one is currently accessing)
+    /// Index of the back buffer (which no one is currently using)
     back_idx: AtomicTripleBufferIndex,
 
-    /// Index of the most recently updated buffer
+    /// Index of the buffer that was most recently updated by the producer
     last_idx: AtomicTripleBufferIndex,
 }
 //
