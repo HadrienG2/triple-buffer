@@ -134,3 +134,9 @@ On my laptop's CPU (Intel Core i7-4720HQ), typical results are as follows:
 * Dirty read: 7.2 ns
 * Concurrent write: 45 ns
 * Concurrent read: 88 ns
+
+
+## License
+
+This crate is distributed under the terms of the GPLv3 license. See the
+LICENSE-GPLv3.md file for details.
