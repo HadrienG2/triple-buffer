@@ -7,6 +7,6 @@ repository = "https://github.com/HadrienG2/triple-buffer"
 readme = "README.md"
 keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-free" ]
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
-license = "GPLv3"
+license = "GPL-3.0"
 
 [dependencies]
