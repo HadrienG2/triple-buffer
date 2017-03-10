@@ -1,12 +1,22 @@
 [package]
+
 name = "triple_buffer"
-version = "0.1.0"
+
+version = "0.1.1"
+
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
+
 description = "An implementation of triple buffering, useful for sharing frequently updated data between threads"
+
+documentation = "https://docs.rs/triple_buffer/"
 repository = "https://github.com/HadrienG2/triple-buffer"
+
 readme = "README.md"
+
 keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-free" ]
+
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
+
 license = "GPL-3.0"
 
 [dependencies]
