@@ -1,5 +1,8 @@
 # Triple buffering in Rust
 
+![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)
+![On docs.rs](https://docs.rs/triple_buffer/)
+
 ## What is this?
 
 This is an implementation of triple buffering written in Rust. You may find it
