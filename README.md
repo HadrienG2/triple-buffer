@@ -1,7 +1,6 @@
 # Triple buffering in Rust
 
-![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)
-
+![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg) 
 ![On docs.rs](https://docs.rs/triple_buffer/badge.svg)
 
 ## What is this?
