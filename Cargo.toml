@@ -2,7 +2,7 @@
 
 name = "triple_buffer"
 
-version = "0.1.1"
+version = "0.2.0"
 
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
 
@@ -17,6 +17,6 @@ keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-
 
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
 
-license = "GPL-3.0"
+license = "LGPL-3.0"
 
 [dependencies]

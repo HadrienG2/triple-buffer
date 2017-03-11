@@ -141,5 +141,9 @@ On my laptop's CPU (Intel Core i7-4720HQ), typical results are as follows:
 
 ## License
 
-This crate is distributed under the terms of the GPLv3 license. See the
-LICENSE-GPLv3.md file for details.
+This crate is distributed under the terms of the LGPLv3 license. See the
+LICENSE-LGPL-3.0.md file for details.
+
+More relaxed licensing (Apache, MIT, BSD...) may also be negociated, in
+exchange of a financial contribution. Contact me for details at 
+knights_of_ni@gmx.com.
