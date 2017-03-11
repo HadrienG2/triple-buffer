@@ -146,4 +146,4 @@ LICENSE-LGPL-3.0.md file for details.
 
 More relaxed licensing (Apache, MIT, BSD...) may also be negociated, in
 exchange of a financial contribution. Contact me for details at 
-knights_of_ni@gmx.com.
+knights_of_ni AT gmx DOTCOM.

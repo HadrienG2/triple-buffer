@@ -2,7 +2,7 @@
 
 name = "triple_buffer"
 
-version = "0.2.0"
+version = "0.2.1"
 
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
 
