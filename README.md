@@ -42,13 +42,12 @@ Compared to a mutex:
 - Allows the producer and consumer to work simultaneously
 - Uses a lot more memory (3x payload + 4 integers vs 1x payload + 1 bool)
 - Does not allow in-place updates, new value must be cloned or moved
-- Should be slower if updates are rare and the type is inefficient to move,
-  faster if updates are frequent or the type is efficiently movable.
+- Should be slower if updates are rare and in-place updates are much more
+  efficient than moves, faster otherwise.
 
 Compared to the read-copy-update (RCU) primitive from the Linux kernel:
 
-- Only works in single-producer, single-consumer scenarios, and thus does not
-  allow the writer to access the old value during update.
+- Only works in single-producer, single-consumer scenarios
 - Has higher dirty read overhead on relaxed-memory architectures (ARM, POWER...)
 - Does not require accounting for reader "grace periods": once the reader has
   gotten access to the latest value, the synchronization transaction is over
