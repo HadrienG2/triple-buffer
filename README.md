@@ -9,7 +9,7 @@ This is an implementation of triple buffering written in Rust. You may find it
 useful for the following class of thread synchronization problems:
 
 - There is one producer thread and one consumer thread
-- The producer wants to update a shared memory value frequently
+- The producer wants to update a shared memory value periodically
 - The consumer wants to access the latest update from the producer at any time
 
 It is currently used as follows:
@@ -42,15 +42,17 @@ Compared to a mutex:
 - Allows the producer and consumer to work simultaneously
 - Uses a lot more memory (3x payload + 4 integers vs 1x payload + 1 bool)
 - Does not allow in-place updates, new value must be cloned or moved
-- Should be slower if updates are rare, faster if updates are frequent
+- Should be slower if updates are rare and the type is inefficient to move,
+  faster if updates are frequent or the type is efficiently movable.
 
 Compared to the read-copy-update (RCU) primitive from the Linux kernel:
 
-- Only works in single-producer, single-consumer scenarios
-- Has higher readout overhead on relaxed-memory architectures (ARM, POWER...)
+- Only works in single-producer, single-consumer scenarios, and thus does not
+  allow the writer to access the old value during update.
+- Has higher dirty read overhead on relaxed-memory architectures (ARM, POWER...)
 - Does not require accounting for reader "grace periods": once the reader has
   gotten access to the latest value, the synchronization transaction is over
-- Does not use the slow compare-and-swap hardware primitive on update
+- Does not use the inefficient compare-and-swap hardware primitive on update
 - Does not suffer from the ABA problem, allowing much simpler code
 - Allocates memory on initialization only, rather than on every update
 - May use more memory (3x payload + 4 integers vs 1x pointer + amount of
