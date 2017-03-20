@@ -28,6 +28,7 @@
 #![deny(missing_docs)]
 
 use std::cell::UnsafeCell;
+use std::ops::{BitAnd, BitOr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -62,8 +63,7 @@ impl<T: Clone + PartialEq + Send> TripleBuffer<T> {
                     UnsafeCell::new(initial.clone()),
                     UnsafeCell::new(initial)
                 ],
-                back_idx: AtomicTripleBufferIndex::new(0),
-                last_idx: AtomicTripleBufferIndex::new(2),
+                back_info: AtomicBackBufferInfo::new(0),
             }
         );
 
@@ -155,18 +155,16 @@ impl<T: Clone + PartialEq + Send> TripleBufferInput<T> {
         let write_ptr = shared_state.buffers[active_idx].get();
         unsafe { *write_ptr = value; }
 
-        // Swap the back buffer and the write buffer. This makes the new data
-        // block available to the reader and gives us a new buffer to write to.
-        self.write_idx = shared_state.back_idx.swap(
-            active_idx,
-            Ordering::Release  // Need this for new buffer state to be visible
+        // Publish our write buffer as the new back-buffer, setting the dirty
+        // bit to tell the consumer that new data is available in there.
+        let former_back_info = shared_state.back_info.swap(
+            active_idx.bitor(BACK_DIRTY_BIT),
+            Ordering::Release  // Publish buffer updates to the reader
         );
 
-        // Notify the reader that we submitted an update
-        shared_state.last_idx.store(
-            active_idx,
-            Ordering::Release  // Need this for back_idx to be visible
-        );
+        // The previous back-buffer, which is not reader-visible anymore, will
+        // become our new write buffer. Extract its index from the old info.
+        self.write_idx = former_back_info.bitand(BACK_INDEX_MASK)
     }
 }
 
@@ -193,17 +191,19 @@ impl<T: Clone + PartialEq + Send> TripleBufferOutput<T> {
         // Access the shared state
         let ref shared_state = *self.shared;
 
-        // Check if the writer has submitted an update
-        let last_idx = shared_state.last_idx.load(Ordering::Acquire);
-
-        // If an update is pending in the back buffer, make it our read buffer
-        if self.read_idx != last_idx {
-            // Swap the back buffer and the read buffer. We get exclusive read
-            // access to the data, and the writer gets a new back buffer.
-            self.read_idx = shared_state.back_idx.swap(
+        // Check if an update is present in the back-buffer
+        let initial_back_info = shared_state.back_info.load(Ordering::Relaxed);
+        if initial_back_info.bitand(BACK_DIRTY_BIT) != 0 {
+            // If so, exchange our read buffer with the back-buffer, thusly
+            // acquiring exclusive access to the old back buffer while giving
+            // the producer a new back-buffer to write to.
+            let former_back_info = shared_state.back_info.swap(
                 self.read_idx,
-                Ordering::Acquire  // Another update could have occured!
+                Ordering::Acquire  // Synchronize with buffer updates
             );
+
+            // Extract the old back-buffer index as our new read buffer index
+            self.read_idx = former_back_info.bitand(BACK_INDEX_MASK);
         }
 
         // Access data from the current (exclusive-access) read buffer
@@ -219,19 +219,16 @@ impl<T: Clone + PartialEq + Send> TripleBufferOutput<T> {
 /// the following storage:
 ///
 /// - Three memory buffers suitable for storing the data at hand
-/// - One index pointing to the "back" buffer, which no one is currently using
-/// - One index pointing to the most recently updated buffer
+/// - Information about the back-buffer: which buffer is the current back-buffer
+///   and whether an update was published since the last readout.
 ///
 #[derive(Debug)]
 struct TripleBufferSharedState<T: Clone + PartialEq + Send> {
     /// Data storage buffers
     buffers: [UnsafeCell<T>; 3],
 
-    /// Index of the back buffer (which no one is currently using)
-    back_idx: AtomicTripleBufferIndex,
-
-    /// Index of the buffer that was most recently updated by the producer
-    last_idx: AtomicTripleBufferIndex,
+    /// Information about the current back-buffer state
+    back_info: AtomicBackBufferInfo,
 }
 //
 impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
@@ -245,11 +242,6 @@ impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
             )
         };
 
-        // ...and atomics aren't much better...
-        let clone_atomic = | ai: &AtomicTripleBufferIndex | {
-            AtomicTripleBufferIndex::new(ai.load(Ordering::Relaxed))
-        };
-
         // ...so better define some shortcuts before getting started:
         TripleBufferSharedState {
             buffers: [
@@ -257,8 +249,9 @@ impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
                 clone_buffer(1),
                 clone_buffer(2),
             ],
-            back_idx: clone_atomic(&self.back_idx),
-            last_idx: clone_atomic(&self.last_idx),
+            back_info: AtomicBackBufferInfo::new(
+                self.back_info.load(Ordering::Relaxed)
+            ),
         }
     }
 
@@ -270,16 +263,10 @@ impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
             *self.buffers[i].get() == *other.buffers[i].get()
         };
 
-        // ...and atomics aren't much better...
-        let atomics_eq = | x: &AtomicTripleBufferIndex,
-                           y: &AtomicTripleBufferIndex | -> bool {
-            x.load(Ordering::Relaxed) == y.load(Ordering::Relaxed)
-        };
-
         // ...so better define some shortcuts before getting started:
         buffer_eq(0) && buffer_eq(1) && buffer_eq(2) &&
-        atomics_eq(&self.back_idx, &other.back_idx) &&
-        atomics_eq(&self.last_idx, &other.last_idx)
+        (self.back_info.load(Ordering::Relaxed)
+            == other.back_info.load(Ordering::Relaxed))
     }
 }
 //
@@ -288,17 +275,24 @@ unsafe impl<T: Clone + PartialEq + Send> Sync for TripleBufferSharedState<T> {}
 
 /// Index types used for triple buffering
 ///
-/// These types are used to index into triple buffers
+/// These types are used to index into triple buffers. In addition, the
+/// BackBufferInfo type is actually a bitfield, whose third bit (numerical
+/// value: 4) is set to 1 to indicate that the producer published an update into
+/// the back-buffer, and reset to 0 when the reader fetches the update.
 ///
 /// TODO: Switch to i8 / AtomicI8 once the later is stable
 ///
 type TripleBufferIndex = usize;
-type AtomicTripleBufferIndex = AtomicUsize;
+//
+type AtomicBackBufferInfo = AtomicUsize;
+const BACK_INDEX_MASK: usize = 3;  // Mask used to extract the back-buffer index
+const BACK_DIRTY_BIT: usize = 4;  // Bit set by the producer to signal updates
 
 
 /// Unit tests
 #[cfg(test)]
 mod tests {
+    use std::ops::{BitAnd, BitOr};
     use std::sync::Barrier;
     use std::thread;
     use std::time::Duration;
@@ -309,10 +303,11 @@ mod tests {
         // Let's create a triple buffer
         let buf = ::TripleBuffer::new(42);
 
-        // Access the shared state
+        // Access the shared state and decode back-buffer information
         let ref buf_shared = *buf.input.shared;
-        let back_idx = buf_shared.back_idx.load(::Ordering::Relaxed);
-        let last_idx = buf_shared.last_idx.load(::Ordering::Relaxed);
+        let back_info = buf_shared.back_info.load(::Ordering::Relaxed);
+        let back_idx = back_info.bitand(::BACK_INDEX_MASK);
+        let back_buffer_clean = back_info.bitand(::BACK_DIRTY_BIT) == 0;
 
         // Write-/read-/back-buffer indexes must be in range
         assert!(index_in_range(buf.input.write_idx));
@@ -328,8 +323,8 @@ mod tests {
         let read_ptr = buf_shared.buffers[buf.output.read_idx].get();
         assert!(unsafe { *read_ptr } == 42);
 
-        // Last-written index must initially point to the read buffer
-        assert_eq!(last_idx, buf.output.read_idx);
+        // Back-buffer must be initially clean
+        assert!(back_buffer_clean);
     }
 
     /// Check that (sequentially) writing to a triple buffer works
@@ -356,20 +351,16 @@ mod tests {
             let write_buf_ptr = expected_shared.buffers[old_write_idx].get();
             unsafe { *write_buf_ptr = true; }
 
-            // We expect the former write buffer to be the new back buffer
-            expected_shared.back_idx.store(
-                old_write_idx,
-                ::Ordering::Relaxed
-            );
-
-            // We expect the last updated index to point to former write buffer
-            expected_shared.last_idx.store(
-                old_write_idx,
+            // We expect the former write buffer to become the new back buffer
+            // and the back buffer's dirty bit to be set
+            expected_shared.back_info.store(
+                old_write_idx.bitor(::BACK_DIRTY_BIT),
                 ::Ordering::Relaxed
             );
 
             // We expect the old back buffer to become the new write buffer
-            let old_back_idx = old_shared.back_idx.load(::Ordering::Relaxed);
+            let old_back_info = old_shared.back_info.load(::Ordering::Relaxed);
+            let old_back_idx = old_back_info.bitand(::BACK_INDEX_MASK);
             expected_buf.input.write_idx = old_back_idx;
 
             // Nothing else should have changed
@@ -401,13 +392,15 @@ mod tests {
             let ref expected_shared = expected_buf.input.shared;
 
             // We expect the new back index to point to the former read buffer
-            expected_shared.back_idx.store(
+            // and the back buffer's dirty bit to be unset.
+            expected_shared.back_info.store(
                 old_buf.output.read_idx,
                 ::Ordering::Relaxed
             );
 
             // We expect the new read index to point to the former back buffer
-            let old_back_idx = old_shared.back_idx.load(::Ordering::Relaxed);
+            let old_back_info = old_shared.back_info.load(::Ordering::Relaxed);
+            let old_back_idx = old_back_info.bitand(::BACK_INDEX_MASK);
             expected_buf.output.read_idx = old_back_idx;
 
             // Nothing else should have changed

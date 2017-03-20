@@ -132,11 +132,11 @@ Here is a guide to interpreting the benchmark results:
 
 On my laptop's CPU (Intel Core i7-4720HQ), typical results are as follows:
 
-* Write: 7.7 ns
-* Clean read: 0.85 ns
-* Dirty read: 7.2 ns
-* Concurrent write: 45 ns
-* Concurrent read: 88 ns
+* Write: 7.4 ns
+* Clean read: 0.75 ns
+* Dirty read: 9.4 ns
+* Concurrent write: 41 ns
+* Concurrent read: 98 ns
 
 
 ## License
