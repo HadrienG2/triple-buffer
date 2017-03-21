@@ -285,8 +285,8 @@ unsafe impl<T: Clone + PartialEq + Send> Sync for TripleBufferSharedState<T> {}
 type TripleBufferIndex = usize;
 //
 type AtomicBackBufferInfo = AtomicUsize;
-const BACK_INDEX_MASK: usize = 3;  // Mask used to extract the back-buffer index
-const BACK_DIRTY_BIT: usize = 4;  // Bit set by the producer to signal updates
+const BACK_INDEX_MASK: usize = 0b11;  // Mask used to extract back-buffer index
+const BACK_DIRTY_BIT: usize = 0b100;  // Bit set by producer to signal updates
 
 
 /// Unit tests
