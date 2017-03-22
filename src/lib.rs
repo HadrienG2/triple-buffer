@@ -322,7 +322,7 @@ mod tests {
 
         // Read buffer must be properly initialized
         let read_ptr = buf_shared.buffers[buf.output.read_idx].get();
-        assert!(unsafe { *read_ptr } == 42);
+        assert_eq!(unsafe { *read_ptr }, 42);
 
         // Back-buffer must be initially clean
         assert!(back_buffer_clean);
