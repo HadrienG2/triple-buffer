@@ -293,7 +293,8 @@ const BACK_DIRTY_BIT: usize = 0b100;  // Bit set by producer to signal updates
 #[cfg(test)]
 mod tests {
     use std::ops::{BitAnd, BitOr};
-    use std::sync::Barrier;
+    use std::sync::atomic::Ordering;
+    use std::sync::{Arc, Barrier};
     use std::thread;
     use std::time::Duration;
 
@@ -305,7 +306,7 @@ mod tests {
 
         // Access the shared state and decode back-buffer information
         let ref buf_shared = *buf.input.shared;
-        let back_info = buf_shared.back_info.load(::Ordering::Relaxed);
+        let back_info = buf_shared.back_info.load(Ordering::Relaxed);
         let back_idx = back_info.bitand(::BACK_INDEX_MASK);
         let back_buffer_clean = back_info.bitand(::BACK_DIRTY_BIT) == 0;
 
@@ -355,11 +356,11 @@ mod tests {
             // and the back buffer's dirty bit to be set
             expected_shared.back_info.store(
                 old_write_idx.bitor(::BACK_DIRTY_BIT),
-                ::Ordering::Relaxed
+                Ordering::Relaxed
             );
 
             // We expect the old back buffer to become the new write buffer
-            let old_back_info = old_shared.back_info.load(::Ordering::Relaxed);
+            let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
             let old_back_idx = old_back_info.bitand(::BACK_INDEX_MASK);
             expected_buf.input.write_idx = old_back_idx;
 
@@ -395,11 +396,11 @@ mod tests {
             // and the back buffer's dirty bit to be unset.
             expected_shared.back_info.store(
                 old_buf.output.read_idx,
-                ::Ordering::Relaxed
+                Ordering::Relaxed
             );
 
             // We expect the new read index to point to the former back buffer
-            let old_back_info = old_shared.back_info.load(::Ordering::Relaxed);
+            let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
             let old_back_idx = old_back_info.bitand(::BACK_INDEX_MASK);
             expected_buf.output.read_idx = old_back_idx;
 
@@ -446,7 +447,7 @@ mod tests {
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Setup a barrier so that the reader & writer can start synchronously
-        let barrier = ::Arc::new(Barrier::new(2));
+        let barrier = Arc::new(Barrier::new(2));
         let w_barrier = barrier.clone();
 
         // The writer continuously increments the buffered value, with some
@@ -497,8 +498,8 @@ mod tests {
 ///
 #[cfg(test)]
 mod benchmarks {
-    use std::sync::Barrier;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Barrier};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
     use std::time::Instant;
 
@@ -562,18 +563,18 @@ mod benchmarks {
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Set up a barrier so that we can wait for the writer to start
-        let barrier = ::Arc::new(Barrier::new(2));
+        let barrier = Arc::new(Barrier::new(2));
         let w_barrier = barrier.clone();
 
         // Set up a shared boolean flag so that we can stop the writer
-        let run_flag = ::Arc::new(AtomicBool::new(true));
+        let run_flag = Arc::new(AtomicBool::new(true));
         let w_run_flag = run_flag.clone();
 
         // Set up a writer that continuously updates the shared value
         let writer = thread::spawn(move || {
             let counter = 1;
             w_barrier.wait();
-            while w_run_flag.load(::Ordering::Relaxed) {
+            while w_run_flag.load(Ordering::Relaxed) {
                 buf_input.write(counter);
                 counter.wrapping_add(1);
             }
@@ -592,7 +593,7 @@ mod benchmarks {
         );
 
         // Tell the writer to stop
-        run_flag.store(false, ::Ordering::Relaxed);
+        run_flag.store(false, Ordering::Relaxed);
         writer.join().unwrap();
     }
 
@@ -607,17 +608,17 @@ mod benchmarks {
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Set up a barrier so that we can wait for the reader to start
-        let barrier = ::Arc::new(Barrier::new(2));
+        let barrier = Arc::new(Barrier::new(2));
         let r_barrier = barrier.clone();
 
         // Set up a shared boolean flag so that we can stop the reader
-        let run_flag = ::Arc::new(AtomicBool::new(true));
+        let run_flag = Arc::new(AtomicBool::new(true));
         let r_run_flag = run_flag.clone();
 
         // Set up a reader that continuously accesses the shared value
         let reader = thread::spawn(move || {
             r_barrier.wait();
-            while r_run_flag.load(::Ordering::Relaxed) {
+            while r_run_flag.load(Ordering::Relaxed) {
                 let read = *buf_output.read();
                 assert!(read < u32::max_value());
             }
@@ -635,7 +636,7 @@ mod benchmarks {
         );
 
         // Tell the reader to stop
-        run_flag.store(false, ::Ordering::Relaxed);
+        run_flag.store(false, Ordering::Relaxed);
         reader.join().unwrap();
     }
 
