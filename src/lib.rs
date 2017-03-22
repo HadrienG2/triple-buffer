@@ -56,16 +56,13 @@ impl<T: Clone + PartialEq + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
     pub fn new(initial: T) -> Self {
         // Start with the shared state...
-        let shared_state = Arc::new(
-            TripleBufferSharedState {
-                buffers: [
-                    UnsafeCell::new(initial.clone()),
-                    UnsafeCell::new(initial.clone()),
-                    UnsafeCell::new(initial)
-                ],
-                back_info: AtomicBackBufferInfo::new(0),
-            }
-        );
+        let shared_state = Arc::new(TripleBufferSharedState {
+                                        buffers:
+                                            [UnsafeCell::new(initial.clone()),
+                                             UnsafeCell::new(initial.clone()),
+                                             UnsafeCell::new(initial)],
+                                        back_info: AtomicBackBufferInfo::new(0),
+                                    });
 
         // ...then construct the input and output structs
         TripleBuffer {
@@ -92,9 +89,7 @@ impl<T: Clone + PartialEq + Send> Clone for TripleBuffer<T> {
     fn clone(&self) -> Self {
         // Clone the shared state. This is safe because at this layer of the
         // interface, one needs an Input/Output &mut to mutate the shared state.
-        let shared_state = Arc::new(
-            unsafe { (*self.input.shared).clone() }
-        );
+        let shared_state = Arc::new(unsafe { (*self.input.shared).clone() });
 
         // ...then the input and output structs
         TripleBuffer {
@@ -114,9 +109,8 @@ impl<T: Clone + PartialEq + Send> PartialEq for TripleBuffer<T> {
     fn eq(&self, other: &Self) -> bool {
         // Compare the shared states. This is safe because at this layer of the
         // interface, one needs an Input/Output &mut to mutate the shared state.
-        let shared_states_equal = unsafe {
-            (*self.input.shared).eq(&*other.input.shared)
-        };
+        let shared_states_equal =
+            unsafe { (*self.input.shared).eq(&*other.input.shared) };
 
         // Compare the rest of the triple buffer states
         shared_states_equal &&
@@ -153,7 +147,9 @@ impl<T: Clone + PartialEq + Send> TripleBufferInput<T> {
 
         // Move the input value into the (exclusive-access) write buffer.
         let write_ptr = shared_state.buffers[active_idx].get();
-        unsafe { *write_ptr = value; }
+        unsafe {
+            *write_ptr = value;
+        }
 
         // Publish our write buffer as the new back-buffer, setting the dirty
         // bit to tell the consumer that new data is available in there.
@@ -236,37 +232,35 @@ impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
         // The use of UnsafeCell makes buffers somewhat cumbersome to clone...
-        let clone_buffer = | i: TripleBufferIndex | -> UnsafeCell<T> {
-            UnsafeCell::new(
-                (*self.buffers[i].get()).clone()
-            )
+        let clone_buffer = |i: TripleBufferIndex| -> UnsafeCell<T> {
+            UnsafeCell::new((*self.buffers[i].get()).clone())
         };
 
         // ...so better define some shortcuts before getting started:
         TripleBufferSharedState {
-            buffers: [
-                clone_buffer(0),
-                clone_buffer(1),
-                clone_buffer(2),
-            ],
-            back_info: AtomicBackBufferInfo::new(
-                self.back_info.load(Ordering::Relaxed)
-            ),
+            buffers: [clone_buffer(0), clone_buffer(1), clone_buffer(2)],
+            back_info:
+                AtomicBackBufferInfo::new(self.back_info
+                                              .load(Ordering::Relaxed)),
         }
     }
 
     /// Equality is unsafe for the same reason as cloning: you must ensure that
     /// no one is concurrently accessing the triple buffer to avoid data races.
     unsafe fn eq(&self, other: &Self) -> bool {
-        // The use of UnsafeCell makes buffers somewhat cumbersome to compare...
-        let buffer_eq = | i: TripleBufferIndex | -> bool {
-            *self.buffers[i].get() == *other.buffers[i].get()
-        };
+        // Check whether the contents of all buffers are equal...
+        let buffers_equal = self.buffers
+            .iter()
+            .zip(other.buffers.iter())
+            .all(|tuple| -> bool {
+                     let (cell1, cell2) = tuple;
+                     *cell1.get() == *cell2.get()
+                 });
 
-        // ...so better define some shortcuts before getting started:
-        buffer_eq(0) && buffer_eq(1) && buffer_eq(2) &&
-        (self.back_info.load(Ordering::Relaxed)
-            == other.back_info.load(Ordering::Relaxed))
+        // ...then check whether the rest of the shared state is equal
+        buffers_equal &&
+        (self.back_info.load(Ordering::Relaxed) ==
+         other.back_info.load(Ordering::Relaxed))
     }
 }
 //
@@ -285,8 +279,8 @@ unsafe impl<T: Clone + PartialEq + Send> Sync for TripleBufferSharedState<T> {}
 type TripleBufferIndex = usize;
 //
 type AtomicBackBufferInfo = AtomicUsize;
-const BACK_INDEX_MASK: usize = 0b11;  // Mask used to extract back-buffer index
-const BACK_DIRTY_BIT: usize = 0b100;  // Bit set by producer to signal updates
+const BACK_INDEX_MASK: usize = 0b11; // Mask used to extract back-buffer index
+const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 
 
 /// Unit tests
@@ -349,15 +343,16 @@ mod tests {
 
             // We expect the former write buffer to have received the new value
             let old_write_idx = old_buf.input.write_idx;
-            let write_buf_ptr = expected_shared.buffers[old_write_idx].get();
-            unsafe { *write_buf_ptr = true; }
+            let write_ptr = expected_shared.buffers[old_write_idx].get();
+            unsafe {
+                *write_ptr = true;
+            }
 
             // We expect the former write buffer to become the new back buffer
             // and the back buffer's dirty bit to be set
-            expected_shared.back_info.store(
-                old_write_idx.bitor(::BACK_DIRTY_BIT),
-                Ordering::Relaxed
-            );
+            expected_shared.back_info
+                .store(old_write_idx.bitor(::BACK_DIRTY_BIT),
+                       Ordering::Relaxed);
 
             // We expect the old back buffer to become the new write buffer
             let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
@@ -394,10 +389,8 @@ mod tests {
 
             // We expect the new back index to point to the former read buffer
             // and the back buffer's dirty bit to be unset.
-            expected_shared.back_info.store(
-                old_buf.output.read_idx,
-                Ordering::Relaxed
-            );
+            expected_shared.back_info.store(old_buf.output.read_idx,
+                                            Ordering::Relaxed);
 
             // We expect the new read index to point to the former back buffer
             let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
@@ -454,7 +447,7 @@ mod tests {
         // rate limiting to ensure that the reader can see the updates
         let writer = thread::spawn(move || {
             w_barrier.wait();
-            for value in 1 .. test_write_count+1 {
+            for value in 1..(test_write_count + 1) {
                 buf_input.write(value);
                 thread::yield_now();
                 thread::sleep(Duration::from_millis(1));
@@ -467,9 +460,7 @@ mod tests {
         barrier.wait();
         while last_value < test_write_count {
             let new_value = *buf_output.read();
-            assert!(
-                (new_value >= last_value) && (new_value-last_value <= 1)
-            );
+            assert!((new_value >= last_value) && (new_value - last_value <= 1));
             last_value = new_value;
         }
 
@@ -506,18 +497,16 @@ mod benchmarks {
     /// Benchmark for clean read performance
     #[test]
     #[ignore]
+    #[allow(unused_variables)]
     fn clean_read() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark clean reads
-        benchmark(
-            4000000000u32,
-            |iter| {
-                let read = *buf.output.read();
-                assert!(read < u32::max_value());
-            }
-        );
+        benchmark(4000000000u32, |iter| {
+            let read = *buf.output.read();
+            assert!(read < u32::max_value());
+        });
     }
 
     /// Benchmark for write performance
@@ -528,10 +517,7 @@ mod benchmarks {
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark writes
-        benchmark(
-            440000000u32,
-            |iter| buf.input.write(iter)
-        );
+        benchmark(440000000u32, |iter| buf.input.write(iter));
     }
 
     /// Benchmark for write + dirty read performance
@@ -542,19 +528,17 @@ mod benchmarks {
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark writes + dirty reads
-        benchmark(
-            220000000u32,
-            |iter| {
-                buf.input.write(iter);
-                let read = *buf.output.read();
-                assert!(read < u32::max_value());
-            }
-        );
+        benchmark(220000000u32, |iter| {
+            buf.input.write(iter);
+            let read = *buf.output.read();
+            assert!(read < u32::max_value());
+        });
     }
 
     /// Benchmark read performance under concurrent write pressure
     #[test]
     #[ignore]
+    #[allow(unused_variables)]
     fn concurrent_read() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
@@ -584,13 +568,10 @@ mod benchmarks {
         barrier.wait();
 
         // Benchmark reads
-        benchmark(
-            40000000u32,
-            |iter| {
-                let read = *buf_output.read();
-                assert!(read < u32::max_value());
-            }
-        );
+        benchmark(40000000u32, |iter| {
+            let read = *buf_output.read();
+            assert!(read < u32::max_value());
+        });
 
         // Tell the writer to stop
         run_flag.store(false, Ordering::Relaxed);
@@ -628,12 +609,7 @@ mod benchmarks {
         barrier.wait();
 
         // Benchmark writes
-        benchmark(
-            60000000u32,
-            |iter| {
-                buf_input.write(iter);
-            }
-        );
+        benchmark(60000000u32, |iter| { buf_input.write(iter); });
 
         // Tell the reader to stop
         run_flag.store(false, Ordering::Relaxed);
@@ -641,26 +617,23 @@ mod benchmarks {
     }
 
     /// Simple benchmark harness while I'm waiting for #[bench] to stabilize
-    fn benchmark<F: FnMut(u32)>(num_iterations: u32,
-                                mut iteration: F) {
+    fn benchmark<F: FnMut(u32)>(num_iterations: u32, mut iteration: F) {
         // Run benchmark loop
         let start_time = Instant::now();
-        for iter in 1 .. num_iterations {
+        for iter in 1..num_iterations {
             iteration(iter)
         }
         let total_duration = start_time.elapsed();
 
         // Put results in readable units
-        let total_ms = (total_duration.as_secs() as u32) * 1000
-                     + total_duration.subsec_nanos() / 1000000;
+        let total_ms = (total_duration.as_secs() as u32) * 1000 +
+                       total_duration.subsec_nanos() / 1000000;
         let iter_ns = (total_duration / num_iterations).subsec_nanos();
 
         // Display the results
-        print!(
-            "{} ms ({} iters, <{} ns/iter): ",
-            total_ms,
-            num_iterations,
-            iter_ns+1
-        );
+        print!("{} ms ({} iters, <{} ns/iter): ",
+               total_ms,
+               num_iterations,
+               iter_ns + 1);
     }
 }
