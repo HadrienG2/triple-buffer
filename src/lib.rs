@@ -556,7 +556,7 @@ mod benchmarks {
                               },
                               move || {
                                   buf_input.write(counter);
-                                  counter = counter.wrapping_add(1);
+                                  counter = 1u32.wrapping_sub(counter);
                               });
     }
 
