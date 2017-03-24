@@ -130,8 +130,7 @@ Here is a guide to interpreting the benchmark results:
   continuously reading. Expect significantly worse performance: lock-free
   techniques can help against contention, but are not a panacea.
 * `concurrent_read` measures the read performance when a writer is continuously
-  writing. The performance should be even worse than for writes, because the
-  reading CPU core also needs to fetch the data from the writer's cache.
+  writing. Again, a significant hit is to be expected.
 
 On my laptop's CPU (Intel Core i7-4720HQ), typical results are as follows:
 

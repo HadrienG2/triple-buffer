@@ -550,7 +550,7 @@ mod benchmarks {
         // Benchmark reads under concurrent write pressure
         let mut counter = 0u32;
         fixture.run_benchmark(40_000_000u32,
-                              |iter| {
+                              move |iter| {
                                   let read = *buf_output.read();
                                   assert!(read < u32::max_value());
                               },
@@ -573,7 +573,7 @@ mod benchmarks {
 
         // Benchmark writes under concurrent read pressure
         fixture.run_benchmark(60_000_000u32,
-                              |iter| { buf_input.write(iter); },
+                              move |iter| { buf_input.write(iter); },
                               move || {
                                   let read = *buf_output.read();
                                   assert!(read < u32::max_value());
