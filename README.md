@@ -72,7 +72,9 @@ In short, triple buffering is what you're after in scenarios where a shared
 memory location is updated frequently by a single writer, read by a single
 reader who only wants the latest version, and you can spare some RAM.
 
-- If you need multiple producers and consumers, look somewhere else
+- If you need multiple producers, look somewhere else
+- If you need multiple consumers, you may be interested in my related "SPMC
+  buffer" work, which basically extends triple buffering to multiple consumers
 - If you can't tolerate the RAM overhead or want to update the data in place,
   try a Mutex instead (or possibly an RWLock)
 - If the shared value is updated very rarely (e.g. every second), try an RCU
