@@ -491,7 +491,7 @@ mod tests {
 mod benchmarks {
     use std::sync::{Arc, Barrier};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::thread;
+    use std::thread::{self, JoinHandle};
     use std::time::Instant;
 
     /// Benchmark for clean read performance
@@ -542,40 +542,22 @@ mod benchmarks {
     fn concurrent_read() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
-
-        // Extract the triple buffer's input and output
         let (mut buf_input, mut buf_output) = buf.split();
 
-        // Set up a barrier so that we can wait for the writer to start
-        let barrier = Arc::new(Barrier::new(2));
-        let w_barrier = barrier.clone();
+        // Create a concurrent benchmark fixture
+        let mut fixture = ConcurrentBenchFixture::new();
 
-        // Set up a shared boolean flag so that we can stop the writer
-        let run_flag = Arc::new(AtomicBool::new(true));
-        let w_run_flag = run_flag.clone();
-
-        // Set up a writer that continuously updates the shared value
-        let writer = thread::spawn(move || {
-            let counter = 1;
-            w_barrier.wait();
-            while w_run_flag.load(Ordering::Relaxed) {
-                buf_input.write(counter);
-                counter.wrapping_add(1);
-            }
-        });
-
-        // Wait for the writer to be running
-        barrier.wait();
-
-        // Benchmark reads
-        benchmark(40000000u32, |iter| {
-            let read = *buf_output.read();
-            assert!(read < u32::max_value());
-        });
-
-        // Tell the writer to stop
-        run_flag.store(false, Ordering::Relaxed);
-        writer.join().unwrap();
+        // Benchmark reads under concurrent write pressure
+        let mut counter = 0u32;
+        fixture.run_benchmark(40000000u32,
+                              |iter| {
+                                  let read = *buf_output.read();
+                                  assert!(read < u32::max_value());
+                              },
+                              move || {
+                                  buf_input.write(counter);
+                                  counter = counter.wrapping_add(1);
+                              });
     }
 
     /// Benchmark write performance under concurrent read pressure
@@ -584,36 +566,18 @@ mod benchmarks {
     fn concurrent_write() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
-
-        // Extract the triple buffer's input and output
         let (mut buf_input, mut buf_output) = buf.split();
 
-        // Set up a barrier so that we can wait for the reader to start
-        let barrier = Arc::new(Barrier::new(2));
-        let r_barrier = barrier.clone();
+        // Create a concurrent benchmark fixture
+        let mut fixture = ConcurrentBenchFixture::new();
 
-        // Set up a shared boolean flag so that we can stop the reader
-        let run_flag = Arc::new(AtomicBool::new(true));
-        let r_run_flag = run_flag.clone();
-
-        // Set up a reader that continuously accesses the shared value
-        let reader = thread::spawn(move || {
-            r_barrier.wait();
-            while r_run_flag.load(Ordering::Relaxed) {
-                let read = *buf_output.read();
-                assert!(read < u32::max_value());
-            }
-        });
-
-        // Wait for the reader to be running
-        barrier.wait();
-
-        // Benchmark writes
-        benchmark(60000000u32, |iter| { buf_input.write(iter); });
-
-        // Tell the reader to stop
-        run_flag.store(false, Ordering::Relaxed);
-        reader.join().unwrap();
+        // Benchmark writes under concurrent read pressure
+        fixture.run_benchmark(60000000u32,
+                              |iter| { buf_input.write(iter); },
+                              move || {
+                                  let read = *buf_output.read();
+                                  assert!(read < u32::max_value());
+                              });
     }
 
     /// Simple benchmark harness while I'm waiting for #[bench] to stabilize
@@ -631,9 +595,76 @@ mod benchmarks {
         let iter_ns = (total_duration / num_iterations).subsec_nanos();
 
         // Display the results
-        print!("{} ms ({} iters, <{} ns/iter): ",
+        print!("{} ms ({} iters, ~{} ns/iter): ",
                total_ms,
                num_iterations,
                iter_ns + 1);
+    }
+
+    /// This benchmark fixture is shared by all concurrent benchmarks, it serves
+    /// as a way to schedule some "antagonistic" task in a loop in the
+    /// background as the benchmark proceeds in the main thread.
+    /// runs in the foreground.
+    struct ConcurrentBenchFixture {
+        // Required setup for the task being benchmarked
+        b_fixture: (Arc<Barrier>, Arc<AtomicBool>),
+
+        // Required setup for the antagonist task
+        a_fixture: Option<(Arc<Barrier>, Arc<AtomicBool>)>,
+    }
+    //
+    impl ConcurrentBenchFixture {
+        // Initialize the concurrent benchmark fixture
+        pub fn new() -> Self {
+            // Setup a barrier to synchronize benchmark and antagonist startup
+            let barrier = Arc::new(Barrier::new(2));
+
+            // Setup an atomic "continue" flag to shut down the antagonist at
+            // the end of the benchmarking procedure
+            let run_flag = Arc::new(AtomicBool::new(true));
+
+            // Return a complete benchmarking fixture
+            ConcurrentBenchFixture {
+                b_fixture: (barrier.clone(), run_flag.clone()),
+                a_fixture: Some((barrier, run_flag)),
+            }
+        }
+
+        // Run the concurrent benchmark
+        fn run_benchmark<F, A>(&mut self,
+                               num_iterations: u32,
+                               iteration_func: F,
+                               antagonist_func: A)
+            where F: FnMut(u32),
+                  A: FnMut() + Send + 'static
+        {
+            // Schedule the antagonist
+            let antagonist = self.schedule_antagonist(antagonist_func);
+
+            // Wait for the antagonist to be running
+            let (ref barrier, ref run_flag) = self.b_fixture;
+            barrier.wait();
+
+            // Run the benchmark
+            benchmark(num_iterations, iteration_func);
+
+            // Stop the antagonist
+            run_flag.store(false, Ordering::Relaxed);
+            antagonist.join().unwrap();
+        }
+
+        // Schedule the antagonist thread, which will run a certain operation
+        // in a loop until the benchmark is finished
+        fn schedule_antagonist<F>(&mut self, mut operation: F) -> JoinHandle<()>
+            where F: FnMut() + Send + 'static
+        {
+            let (barrier, run_flag) = self.a_fixture.take().unwrap();
+            thread::spawn(move || {
+                              barrier.wait();
+                              while run_flag.load(Ordering::Relaxed) {
+                                  operation();
+                              }
+                          })
+        }
     }
 }
