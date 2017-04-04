@@ -27,6 +27,8 @@
 
 #![deny(missing_docs)]
 
+extern crate testbench;
+
 use std::cell::UnsafeCell;
 use std::ops::{BitAnd, BitOr};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -288,9 +290,9 @@ const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 mod tests {
     use std::ops::{BitAnd, BitOr};
     use std::sync::atomic::Ordering;
-    use std::sync::{Arc, Barrier};
     use std::thread;
     use std::time::Duration;
+    use testbench;
 
     /// Check that triple buffers are properly initialized
     #[test]
@@ -417,7 +419,7 @@ mod tests {
         }
     }
 
-    /// Check that concurrent reads and writes work
+    /// Check that contended concurrent reads and writes work
     ///
     /// **WARNING:** This test unfortunately needs to have timing-dependent
     /// behaviour to do its job. If it fails for you, try the following:
@@ -428,44 +430,70 @@ mod tests {
     ///
     #[test]
     #[ignore]
-    fn concurrent_access() {
+    fn contended_concurrent_access() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
-        let test_write_count = 10000;
+        const TEST_WRITE_COUNT: u64 = 200_000_000;
 
         // This is the buffer that our reader and writer will share
         let buf = ::TripleBuffer::new(0u64);
-
-        // Extract the input stage so that we can send it to the writer
         let (mut buf_input, mut buf_output) = buf.split();
 
-        // Setup a barrier so that the reader & writer can start synchronously
-        let barrier = Arc::new(Barrier::new(2));
-        let w_barrier = barrier.clone();
-
-        // The writer continuously increments the buffered value, with some
-        // rate limiting to ensure that the reader can see the updates
-        let writer = thread::spawn(move || {
-            w_barrier.wait();
-            for value in 1..(test_write_count + 1) {
-                buf_input.write(value);
-                thread::yield_now();
-                thread::sleep(Duration::from_millis(1));
-            }
-        });
-
-        // The reader continuously checks the buffered value, and should see
-        // every update without any incoherent value
+        // Concurrently run a writer which increments a shared value in a loop,
+        // and a reader which makes sure that no unexpected value slips in.
         let mut last_value = 0u64;
-        barrier.wait();
-        while last_value < test_write_count {
-            let new_value = *buf_output.read();
-            assert!((new_value >= last_value) && (new_value - last_value <= 1));
-            last_value = new_value;
-        }
+        testbench::concurrent_test_2(
+            move || {
+                for value in 1..(TEST_WRITE_COUNT + 1) {
+                    buf_input.write(value);
+                }
+            },
+            move || {
+                while last_value < TEST_WRITE_COUNT {
+                    let new_value = *buf_output.read();
+                    assert!((new_value >= last_value) &&
+                            (new_value <= TEST_WRITE_COUNT));
+                    last_value = new_value;
+                }
+            }
+        );
+    }
 
-        // Wait for the writer to finish
-        writer.join().unwrap();
+    /// Check that uncontended concurrent reads and writes work
+    ///
+    /// **WARNING:** Caveats of contented concurrent access also apply here
+    ///
+    #[test]
+    #[ignore]
+    fn uncontended_concurrent_access() {
+        // We will stress the infrastructure by performing this many writes
+        // as a reader continuously reads the latest value
+        const TEST_WRITE_COUNT: u64 = 10_000;
+
+        // This is the buffer that our reader and writer will share
+        let buf = ::TripleBuffer::new(0u64);
+        let (mut buf_input, mut buf_output) = buf.split();
+
+        // Concurrently run a writer which slowly increments a shared value,
+        // and a reader which checks that it can receive every update
+        let mut last_value = 0u64;
+        testbench::concurrent_test_2(
+            move || {
+                for value in 1..(TEST_WRITE_COUNT + 1) {
+                    buf_input.write(value);
+                    thread::yield_now();
+                    thread::sleep(Duration::from_millis(1));
+                }
+            },
+            move || {
+                while last_value < TEST_WRITE_COUNT {
+                    let new_value = *buf_output.read();
+                    assert!((new_value >= last_value) &&
+                            (new_value - last_value <= 1));
+                    last_value = new_value;
+                }
+            }
+        );
     }
 
     /// Range check for triple buffer indexes
@@ -489,21 +517,17 @@ mod tests {
 ///
 #[cfg(test)]
 mod benchmarks {
-    use std::sync::{Arc, Barrier};
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::thread::{self, JoinHandle};
-    use std::time::Instant;
+    use testbench;
 
     /// Benchmark for clean read performance
     #[test]
     #[ignore]
-    #[allow(unused_variables)]
     fn clean_read() {
         // Create a buffer
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark clean reads
-        benchmark(4_000_000_000u32, |iter| {
+        testbench::benchmark(4_000_000_000, || {
             let read = *buf.output.read();
             assert!(read < u32::max_value());
         });
@@ -517,7 +541,11 @@ mod benchmarks {
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark writes
-        benchmark(440_000_000u32, |iter| buf.input.write(iter));
+        let mut iter = 1u32;
+        testbench::benchmark(440_000_000, || {
+            buf.input.write(iter);
+            iter+= 1;
+        });
     }
 
     /// Benchmark for write + dirty read performance
@@ -528,8 +556,10 @@ mod benchmarks {
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark writes + dirty reads
-        benchmark(220_000_000u32, |iter| {
+        let mut iter = 1u32;
+        testbench::benchmark(220_000_000u32, || {
             buf.input.write(iter);
+            iter+= 1;
             let read = *buf.output.read();
             assert!(read < u32::max_value());
         });
@@ -538,26 +568,24 @@ mod benchmarks {
     /// Benchmark read performance under concurrent write pressure
     #[test]
     #[ignore]
-    #[allow(unused_variables)]
     fn concurrent_read() {
         // Create a buffer
         let buf = ::TripleBuffer::new(0u32);
         let (mut buf_input, mut buf_output) = buf.split();
 
-        // Create a concurrent benchmark fixture
-        let mut fixture = ConcurrentBenchFixture::new();
-
         // Benchmark reads under concurrent write pressure
         let mut counter = 0u32;
-        fixture.run_benchmark(40_000_000u32,
-                              move |iter| {
-                                  let read = *buf_output.read();
-                                  assert!(read < u32::max_value());
-                              },
-                              move || {
-                                  buf_input.write(counter);
-                                  counter = 1u32.wrapping_sub(counter);
-                              });
+        testbench::concurrent_benchmark(
+            40_000_000u32,
+            move || {
+                let read = *buf_output.read();
+                assert!(read < u32::max_value());
+            },
+            move || {
+                buf_input.write(counter);
+                counter = (counter + 1) % u32::max_value();
+            }
+        );
     }
 
     /// Benchmark write performance under concurrent read pressure
@@ -568,103 +596,18 @@ mod benchmarks {
         let buf = ::TripleBuffer::new(0u32);
         let (mut buf_input, mut buf_output) = buf.split();
 
-        // Create a concurrent benchmark fixture
-        let mut fixture = ConcurrentBenchFixture::new();
-
         // Benchmark writes under concurrent read pressure
-        fixture.run_benchmark(60_000_000u32,
-                              move |iter| { buf_input.write(iter); },
-                              move || {
-                                  let read = *buf_output.read();
-                                  assert!(read < u32::max_value());
-                              });
-    }
-
-    /// Simple benchmark harness while I'm waiting for #[bench] to stabilize
-    fn benchmark<F: FnMut(u32)>(num_iterations: u32, mut iteration: F) {
-        // Run benchmark loop
-        let start_time = Instant::now();
-        for iter in 1..num_iterations {
-            iteration(iter)
-        }
-        let total_duration = start_time.elapsed();
-
-        // Put results in readable units
-        let total_ms = (total_duration.as_secs() as u32) * 1000 +
-                       total_duration.subsec_nanos() / 1000000;
-        let iter_ns = (total_duration / num_iterations).subsec_nanos();
-
-        // Display the results
-        print!("{} ms ({} iters, ~{} ns/iter): ",
-               total_ms,
-               num_iterations,
-               iter_ns + 1);
-    }
-
-    /// This benchmark fixture is shared by all concurrent benchmarks, it serves
-    /// as a way to schedule some "antagonistic" task in a loop in the
-    /// background as the benchmark proceeds in the main thread.
-    /// runs in the foreground.
-    struct ConcurrentBenchFixture {
-        // Required setup for the task being benchmarked
-        b_fixture: (Arc<Barrier>, Arc<AtomicBool>),
-
-        // Required setup for the antagonist task
-        a_fixture: Option<(Arc<Barrier>, Arc<AtomicBool>)>,
-    }
-    //
-    impl ConcurrentBenchFixture {
-        // Initialize the concurrent benchmark fixture
-        pub fn new() -> Self {
-            // Setup a barrier to synchronize benchmark and antagonist startup
-            let barrier = Arc::new(Barrier::new(2));
-
-            // Setup an atomic "continue" flag to shut down the antagonist at
-            // the end of the benchmarking procedure
-            let run_flag = Arc::new(AtomicBool::new(true));
-
-            // Return a complete benchmarking fixture
-            ConcurrentBenchFixture {
-                b_fixture: (barrier.clone(), run_flag.clone()),
-                a_fixture: Some((barrier, run_flag)),
+        let mut iter = 1u32;
+        testbench::concurrent_benchmark(
+            60_000_000u32,
+            move || {
+                buf_input.write(iter);
+                iter += 1;
+            },
+            move || {
+                let read = *buf_output.read();
+                assert!(read < u32::max_value());
             }
-        }
-
-        // Run the concurrent benchmark
-        fn run_benchmark<F, A>(&mut self,
-                               num_iterations: u32,
-                               iteration_func: F,
-                               antagonist_func: A)
-            where F: FnMut(u32),
-                  A: FnMut() + Send + 'static
-        {
-            // Schedule the antagonist
-            let antagonist = self.schedule_antagonist(antagonist_func);
-
-            // Wait for the antagonist to be running
-            let (ref barrier, ref run_flag) = self.b_fixture;
-            barrier.wait();
-
-            // Run the benchmark
-            benchmark(num_iterations, iteration_func);
-
-            // Stop the antagonist
-            run_flag.store(false, Ordering::Relaxed);
-            antagonist.join().unwrap();
-        }
-
-        // Schedule the antagonist thread, which will run a certain operation
-        // in a loop until the benchmark is finished
-        fn schedule_antagonist<F>(&mut self, mut operation: F) -> JoinHandle<()>
-            where F: FnMut() + Send + 'static
-        {
-            let (barrier, run_flag) = self.a_fixture.take().unwrap();
-            thread::spawn(move || {
-                              barrier.wait();
-                              while run_flag.load(Ordering::Relaxed) {
-                                  operation();
-                              }
-                          })
-        }
+        );
     }
 }
