@@ -1,0 +1,25 @@
+language: rust
+cache: cargo
+dist: trusty
+os: 
+  - linux
+  - osx
+
+# Run builds for all the supported trains
+rust:
+  - nightly
+  - beta
+  - stable
+  - 1.12.0
+
+# It may not be our fault if a Rust nightly breaks, so we tolerate it
+matrix:
+  fast_finish: true
+  allow_failures:
+    - rust: nightly
+
+# The main build
+script:
+  - cargo build
+  - cargo test --release
+  - cargo test --release -- --ignored --nocapture --test-threads=1

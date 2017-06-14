@@ -2,6 +2,8 @@
 
 [![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)](https://crates.io/crates/triple_buffer)
 [![On docs.rs](https://docs.rs/triple_buffer/badge.svg)](https://docs.rs/triple_buffer/)
+[![Build status](https://travis-ci.org/HadrienG2/triple-buffer.svg?branch=master)](https://travis-ci.org/HadrienG2/triple-buffer)
+
 
 ## What is this?
 
