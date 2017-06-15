@@ -482,7 +482,7 @@ mod tests {
                 for value in 1..(TEST_WRITE_COUNT + 1) {
                     buf_input.write(value);
                     thread::yield_now();
-                    thread::sleep(Duration::from_millis(8));
+                    thread::sleep(Duration::from_millis(16));
                 }
             },
             move || {
