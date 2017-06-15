@@ -106,8 +106,8 @@ check some assumptions:
 - As the proper writing rate is system-dependent, what is configured in this
   test may not be appropriate for your machine.
 
-Taking this and the relatively long run time (~10 s) into account, this test is
-ignored by default.
+Taking this and the relatively long run time (~10-20 s) into account, this test
+is ignored by default.
 
 Finally, we have benchmarks, which allow you to test how well the code is
 performing on your machine. Because cargo bench has not yet landed in Stable
