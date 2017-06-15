@@ -468,7 +468,7 @@ mod tests {
     fn uncontended_concurrent_access() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
-        const TEST_WRITE_COUNT: u64 = 10_000;
+        const TEST_WRITE_COUNT: u64 = 5_000;
 
         // This is the buffer that our reader and writer will share
         let buf = ::TripleBuffer::new(0u64);
@@ -482,7 +482,7 @@ mod tests {
                 for value in 1..(TEST_WRITE_COUNT + 1) {
                     buf_input.write(value);
                     thread::yield_now();
-                    thread::sleep(Duration::from_millis(1));
+                    thread::sleep(Duration::from_millis(2));
                 }
             },
             move || {
