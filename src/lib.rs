@@ -46,7 +46,7 @@ use std::sync::Arc;
 /// TripleBuffer struct after construction, and are further documented below.
 ///
 #[derive(Debug)]
-pub struct TripleBuffer<T: Clone + PartialEq + Send> {
+pub struct TripleBuffer<T: Clone + Send> {
     /// Input object used by producers to send updates
     input: TripleBufferInput<T>,
 
@@ -54,7 +54,7 @@ pub struct TripleBuffer<T: Clone + PartialEq + Send> {
     output: TripleBufferOutput<T>,
 }
 //
-impl<T: Clone + PartialEq + Send> TripleBuffer<T> {
+impl<T: Clone + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
     pub fn new(initial: T) -> Self {
         // Start with the shared state...
@@ -87,7 +87,7 @@ impl<T: Clone + PartialEq + Send> TripleBuffer<T> {
 //
 // The Clone and PartialEq traits are used internally for testing.
 //
-impl<T: Clone + PartialEq + Send> Clone for TripleBuffer<T> {
+impl<T: Clone + Send> Clone for TripleBuffer<T> {
     fn clone(&self) -> Self {
         // Clone the shared state. This is safe because at this layer of the
         // interface, one needs an Input/Output &mut to mutate the shared state.
@@ -130,7 +130,7 @@ impl<T: Clone + PartialEq + Send> PartialEq for TripleBuffer<T> {
 /// and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct TripleBufferInput<T: Clone + PartialEq + Send> {
+pub struct TripleBufferInput<T: Clone + Send> {
     /// Reference-counted shared state
     shared: Arc<TripleBufferSharedState<T>>,
 
@@ -138,7 +138,7 @@ pub struct TripleBufferInput<T: Clone + PartialEq + Send> {
     write_idx: TripleBufferIndex,
 }
 //
-impl<T: Clone + PartialEq + Send> TripleBufferInput<T> {
+impl<T: Clone + Send> TripleBufferInput<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
         // Access the shared state
@@ -175,7 +175,7 @@ impl<T: Clone + PartialEq + Send> TripleBufferInput<T> {
 /// but deadlocks and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct TripleBufferOutput<T: Clone + PartialEq + Send> {
+pub struct TripleBufferOutput<T: Clone + Send> {
     /// Reference-counted shared state
     shared: Arc<TripleBufferSharedState<T>>,
 
@@ -183,7 +183,7 @@ pub struct TripleBufferOutput<T: Clone + PartialEq + Send> {
     read_idx: TripleBufferIndex,
 }
 //
-impl<T: Clone + PartialEq + Send> TripleBufferOutput<T> {
+impl<T: Clone + Send> TripleBufferOutput<T> {
     /// Access the latest value from the triple buffer
     pub fn read(&mut self) -> &T {
         // Access the shared state
@@ -221,7 +221,7 @@ impl<T: Clone + PartialEq + Send> TripleBufferOutput<T> {
 ///   and whether an update was published since the last readout.
 ///
 #[derive(Debug)]
-struct TripleBufferSharedState<T: Clone + PartialEq + Send> {
+struct TripleBufferSharedState<T: Clone + Send> {
     /// Data storage buffers
     buffers: [UnsafeCell<T>; 3],
 
@@ -229,7 +229,7 @@ struct TripleBufferSharedState<T: Clone + PartialEq + Send> {
     back_info: AtomicBackBufferInfo,
 }
 //
-impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
+impl<T: Clone + Send> TripleBufferSharedState<T> {
     /// Cloning the shared state is unsafe because you must ensure that no one
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
@@ -246,7 +246,9 @@ impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
                                               .load(Ordering::Relaxed)),
         }
     }
-
+}
+//
+impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
     /// Equality is unsafe for the same reason as cloning: you must ensure that
     /// no one is concurrently accessing the triple buffer to avoid data races.
     unsafe fn eq(&self, other: &Self) -> bool {
@@ -266,7 +268,7 @@ impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
     }
 }
 //
-unsafe impl<T: Clone + PartialEq + Send> Sync for TripleBufferSharedState<T> {}
+unsafe impl<T: Clone + Send> Sync for TripleBufferSharedState<T> {}
 
 
 /// Index types used for triple buffering
