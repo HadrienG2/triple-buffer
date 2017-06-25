@@ -295,6 +295,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
     use testbench;
+    use testbench::race_cell::{Racey, UsizeRaceCell};
 
     /// Check that triple buffers are properly initialized
     #[test]
@@ -435,27 +436,34 @@ mod tests {
     fn contended_concurrent_access() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
-        const TEST_WRITE_COUNT: u64 = 200_000_000;
+        const TEST_WRITE_COUNT: usize = 100_000_000;
 
         // This is the buffer that our reader and writer will share
-        let buf = ::TripleBuffer::new(0u64);
+        let buf = ::TripleBuffer::new(UsizeRaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which increments a shared value in a loop,
         // and a reader which makes sure that no unexpected value slips in.
-        let mut last_value = 0u64;
+        let mut last_value = 0usize;
         testbench::concurrent_test_2(
             move || {
                 for value in 1..(TEST_WRITE_COUNT + 1) {
-                    buf_input.write(value);
+                    buf_input.write(UsizeRaceCell::new(value));
                 }
             },
             move || {
                 while last_value < TEST_WRITE_COUNT {
-                    let new_value = *buf_output.read();
-                    assert!((new_value >= last_value) &&
-                            (new_value <= TEST_WRITE_COUNT));
-                    last_value = new_value;
+                    let new_racey_value = buf_output.read().get();
+                    match new_racey_value {
+                        Racey::Consistent(new_value) => {
+                            assert!((new_value >= last_value) &&
+                                    (new_value <= TEST_WRITE_COUNT));
+                            last_value = new_value;
+                        }
+                        Racey::Inconsistent => {
+                            panic!("Inconsistent state exposed by the buffer!");
+                        }
+                    }
                 }
             }
         );
@@ -470,29 +478,36 @@ mod tests {
     fn uncontended_concurrent_access() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
-        const TEST_WRITE_COUNT: u64 = 1_250;
+        const TEST_WRITE_COUNT: usize = 1_250;
 
         // This is the buffer that our reader and writer will share
-        let buf = ::TripleBuffer::new(0u64);
+        let buf = ::TripleBuffer::new(UsizeRaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which slowly increments a shared value,
         // and a reader which checks that it can receive every update
-        let mut last_value = 0u64;
+        let mut last_value = 0usize;
         testbench::concurrent_test_2(
             move || {
                 for value in 1..(TEST_WRITE_COUNT + 1) {
-                    buf_input.write(value);
+                    buf_input.write(UsizeRaceCell::new(value));
                     thread::yield_now();
                     thread::sleep(Duration::from_millis(16));
                 }
             },
             move || {
                 while last_value < TEST_WRITE_COUNT {
-                    let new_value = *buf_output.read();
-                    assert!((new_value >= last_value) &&
-                            (new_value - last_value <= 1));
-                    last_value = new_value;
+                    let new_racey_value = buf_output.read().get();
+                    match new_racey_value {
+                        Racey::Consistent(new_value) => {
+                            assert!((new_value >= last_value) &&
+                                    (new_value - last_value <= 1));
+                            last_value = new_value;
+                        }
+                        Racey::Inconsistent => {
+                            panic!("Inconsistent state exposed by the buffer!");
+                        }
+                    }
                 }
             }
         );
