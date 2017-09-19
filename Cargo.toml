@@ -9,6 +9,7 @@ readme = "README.md"
 keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-free" ]
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
 license = "LGPL-3.0"
+maintenance = { status = "passively-maintained" }
 
 [badges]
 travis-ci = { repository = "HadrienG2/triple-buffer", branch = "master" }
