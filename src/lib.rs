@@ -48,17 +48,17 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct TripleBuffer<T: Clone + Send> {
     /// Input object used by producers to send updates
-    input: TripleBufferInput<T>,
+    input: Input<T>,
 
     /// Output object used by consumers to read the current value
-    output: TripleBufferOutput<T>,
+    output: Output<T>,
 }
 //
 impl<T: Clone + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
     pub fn new(initial: T) -> Self {
         // Start with the shared state...
-        let shared_state = Arc::new(TripleBufferSharedState {
+        let shared_state = Arc::new(SharedState {
                                         buffers:
                                             [UnsafeCell::new(initial.clone()),
                                              UnsafeCell::new(initial.clone()),
@@ -68,11 +68,11 @@ impl<T: Clone + Send> TripleBuffer<T> {
 
         // ...then construct the input and output structs
         TripleBuffer {
-            input: TripleBufferInput {
+            input: Input {
                 shared: shared_state.clone(),
                 write_idx: 1,
             },
-            output: TripleBufferOutput {
+            output: Output {
                 shared: shared_state,
                 read_idx: 2,
             },
@@ -80,7 +80,7 @@ impl<T: Clone + Send> TripleBuffer<T> {
     }
 
     /// Extract input and output of the triple buffer
-    pub fn split(self) -> (TripleBufferInput<T>, TripleBufferOutput<T>) {
+    pub fn split(self) -> (Input<T>, Output<T>) {
         (self.input, self.output)
     }
 }
@@ -95,11 +95,11 @@ impl<T: Clone + Send> Clone for TripleBuffer<T> {
 
         // ...then the input and output structs
         TripleBuffer {
-            input: TripleBufferInput {
+            input: Input {
                 shared: shared_state.clone(),
                 write_idx: self.input.write_idx,
             },
-            output: TripleBufferOutput {
+            output: Output {
                 shared: shared_state,
                 read_idx: self.output.read_idx,
             },
@@ -130,15 +130,15 @@ impl<T: Clone + PartialEq + Send> PartialEq for TripleBuffer<T> {
 /// and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct TripleBufferInput<T: Clone + Send> {
+pub struct Input<T: Clone + Send> {
     /// Reference-counted shared state
-    shared: Arc<TripleBufferSharedState<T>>,
+    shared: Arc<SharedState<T>>,
 
     /// Index of the write buffer (which is private to the producer)
-    write_idx: TripleBufferIndex,
+    write_idx: BufferIndex,
 }
 //
-impl<T: Clone + Send> TripleBufferInput<T> {
+impl<T: Clone + Send> Input<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
         // Access the shared state
@@ -175,15 +175,15 @@ impl<T: Clone + Send> TripleBufferInput<T> {
 /// but deadlocks and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct TripleBufferOutput<T: Clone + Send> {
+pub struct Output<T: Clone + Send> {
     /// Reference-counted shared state
-    shared: Arc<TripleBufferSharedState<T>>,
+    shared: Arc<SharedState<T>>,
 
     /// Index of the read buffer (which is private to the consumer)
-    read_idx: TripleBufferIndex,
+    read_idx: BufferIndex,
 }
 //
-impl<T: Clone + Send> TripleBufferOutput<T> {
+impl<T: Clone + Send> Output<T> {
     /// Access the latest value from the triple buffer
     pub fn read(&mut self) -> &T {
         // Access the shared state
@@ -221,7 +221,7 @@ impl<T: Clone + Send> TripleBufferOutput<T> {
 ///   and whether an update was published since the last readout.
 ///
 #[derive(Debug)]
-struct TripleBufferSharedState<T: Clone + Send> {
+struct SharedState<T: Clone + Send> {
     /// Data storage buffers
     buffers: [UnsafeCell<T>; 3],
 
@@ -229,17 +229,17 @@ struct TripleBufferSharedState<T: Clone + Send> {
     back_info: AtomicBackBufferInfo,
 }
 //
-impl<T: Clone + Send> TripleBufferSharedState<T> {
+impl<T: Clone + Send> SharedState<T> {
     /// Cloning the shared state is unsafe because you must ensure that no one
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
         // The use of UnsafeCell makes buffers somewhat cumbersome to clone...
-        let clone_buffer = |i: TripleBufferIndex| -> UnsafeCell<T> {
+        let clone_buffer = |i: BufferIndex| -> UnsafeCell<T> {
             UnsafeCell::new((*self.buffers[i].get()).clone())
         };
 
         // ...so better define some shortcuts before getting started:
-        TripleBufferSharedState {
+        SharedState {
             buffers: [clone_buffer(0), clone_buffer(1), clone_buffer(2)],
             back_info:
                 AtomicBackBufferInfo::new(self.back_info
@@ -248,7 +248,7 @@ impl<T: Clone + Send> TripleBufferSharedState<T> {
     }
 }
 //
-impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
+impl<T: Clone + PartialEq + Send> SharedState<T> {
     /// Equality is unsafe for the same reason as cloning: you must ensure that
     /// no one is concurrently accessing the triple buffer to avoid data races.
     unsafe fn eq(&self, other: &Self) -> bool {
@@ -268,7 +268,7 @@ impl<T: Clone + PartialEq + Send> TripleBufferSharedState<T> {
     }
 }
 //
-unsafe impl<T: Clone + Send> Sync for TripleBufferSharedState<T> {}
+unsafe impl<T: Clone + Send> Sync for SharedState<T> {}
 
 
 /// Index types used for triple buffering
@@ -280,7 +280,7 @@ unsafe impl<T: Clone + Send> Sync for TripleBufferSharedState<T> {}
 ///
 /// TODO: Switch to i8 / AtomicI8 once the later is stable
 ///
-type TripleBufferIndex = usize;
+type BufferIndex = usize;
 //
 type AtomicBackBufferInfo = AtomicUsize;
 const BACK_INDEX_MASK: usize = 0b11; // Mask used to extract back-buffer index
@@ -515,7 +515,7 @@ mod tests {
 
     /// Range check for triple buffer indexes
     #[allow(unused_comparisons)]
-    fn index_in_range(idx: ::TripleBufferIndex) -> bool {
+    fn index_in_range(idx: ::BufferIndex) -> bool {
         (idx >= 0) & (idx <= 2)
     }
 }
