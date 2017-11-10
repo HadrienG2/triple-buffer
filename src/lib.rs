@@ -30,7 +30,6 @@
 extern crate testbench;
 
 use std::cell::UnsafeCell;
-use std::ops::{BitAnd, BitOr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -156,13 +155,13 @@ impl<T: Clone + Send> Input<T> {
         // Publish our write buffer as the new back-buffer, setting the dirty
         // bit to tell the consumer that new data is available in there.
         let former_back_info = shared_state.back_info.swap(
-            active_idx.bitor(BACK_DIRTY_BIT),
+            active_idx | BACK_DIRTY_BIT,
             Ordering::Release  // Publish buffer updates to the reader
         );
 
         // The previous back-buffer, which is not reader-visible anymore, will
         // become our new write buffer. Extract its index from the old info.
-        self.write_idx = former_back_info.bitand(BACK_INDEX_MASK)
+        self.write_idx = former_back_info & BACK_INDEX_MASK
     }
 }
 
@@ -191,7 +190,7 @@ impl<T: Clone + Send> Output<T> {
 
         // Check if an update is present in the back-buffer
         let initial_back_info = shared_state.back_info.load(Ordering::Relaxed);
-        if initial_back_info.bitand(BACK_DIRTY_BIT) != 0 {
+        if initial_back_info & BACK_DIRTY_BIT != 0 {
             // If so, exchange our read buffer with the back-buffer, thusly
             // acquiring exclusive access to the old back buffer while giving
             // the producer a new back-buffer to write to.
@@ -201,7 +200,7 @@ impl<T: Clone + Send> Output<T> {
             );
 
             // Extract the old back-buffer index as our new read buffer index
-            self.read_idx = former_back_info.bitand(BACK_INDEX_MASK);
+            self.read_idx = former_back_info & BACK_INDEX_MASK;
         }
 
         // Access data from the current (exclusive-access) read buffer
@@ -290,7 +289,6 @@ const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 /// Unit tests
 #[cfg(test)]
 mod tests {
-    use std::ops::{BitAnd, BitOr};
     use std::sync::atomic::Ordering;
     use std::thread;
     use std::time::Duration;
@@ -306,8 +304,8 @@ mod tests {
         // Access the shared state and decode back-buffer information
         let ref buf_shared = *buf.input.shared;
         let back_info = buf_shared.back_info.load(Ordering::Relaxed);
-        let back_idx = back_info.bitand(::BACK_INDEX_MASK);
-        let back_buffer_clean = back_info.bitand(::BACK_DIRTY_BIT) == 0;
+        let back_idx = back_info & ::BACK_INDEX_MASK;
+        let back_buffer_clean = back_info & ::BACK_DIRTY_BIT == 0;
 
         // Write-/read-/back-buffer indexes must be in range
         assert!(index_in_range(buf.input.write_idx));
@@ -356,12 +354,12 @@ mod tests {
             // We expect the former write buffer to become the new back buffer
             // and the back buffer's dirty bit to be set
             expected_shared.back_info
-                .store(old_write_idx.bitor(::BACK_DIRTY_BIT),
+                .store(old_write_idx | ::BACK_DIRTY_BIT,
                        Ordering::Relaxed);
 
             // We expect the old back buffer to become the new write buffer
             let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-            let old_back_idx = old_back_info.bitand(::BACK_INDEX_MASK);
+            let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
             expected_buf.input.write_idx = old_back_idx;
 
             // Nothing else should have changed
@@ -399,7 +397,7 @@ mod tests {
 
             // We expect the new read index to point to the former back buffer
             let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-            let old_back_idx = old_back_info.bitand(::BACK_INDEX_MASK);
+            let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
             expected_buf.output.read_idx = old_back_idx;
 
             // Nothing else should have changed
