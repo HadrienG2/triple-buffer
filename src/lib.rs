@@ -154,28 +154,69 @@ pub struct Input<T: Send> {
 impl<T: Send> Input<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
-        // Access the shared state
-        let ref shared_state = *self.shared;
+        let mut write_handle = self.begin_write();
+        *write_handle.buffer() = value;
+        write_handle.submit();
+    }
 
-        // Determine which shared buffer is the write buffer
-        let active_idx = self.write_idx;
+    /// Acquire access to the current write buffer for in-place modification
+    ///
+    /// This is a lower-level, more error-prone variant of write(), which allows
+    /// you to directly write into the producer's buffer. It is intended as a
+    /// way to avoid moves and subsequent re-creations of objects when the
+    /// overhead of that workflow is non-negligible. However, there is quite a
+    /// bit of fine print, and we encourage you to _carefully_ read the
+    /// documentation of PendingWrite when using this data submission method.
+    ///
+    pub fn begin_write(&mut self) -> PendingWrite<T> {
+        PendingWrite { input: self }
+    }
+}
+///
+/// RAII wrapper used by write_raw to enable in-place writes
+pub struct PendingWrite<'a, T: 'a + Clone + Send> {
+    /// Back-reference to the triple buffer input
+    input: &'a mut Input<T>
+}
+//
+impl<'a, T: 'a + Clone + Send> PendingWrite<'a, T> {
+    /// Get a reference to the current write buffer
+    ///
+    /// Please keep in mind that this is **not** the last value that you have
+    /// sent to the consumer. That value is now in the consumer's hands, and
+    /// must therefore be kept out of your reach to ensure thread safety.
+    ///
+    /// The only assumption that you can safely make about the contents of this
+    /// buffer is that it contains a valid value of type T. That's it.
+    ///
+    pub fn buffer(&mut self) -> &mut T {
+        // Access the write buffer, to which we have exclusive access
+        let write_ptr = self.input.shared.buffers[self.input.write_idx].get();
+        unsafe { &mut *write_ptr }
+    }
 
-        // Move the input value into the (exclusive-access) write buffer.
-        let write_ptr = shared_state.buffers[active_idx].get();
-        unsafe {
-            *write_ptr = value;
-        }
-
+    /// Send the write buffer to the consumer, telling whether the previous
+    /// submission was received by the consumer (true) or overwritten (false)
+    ///
+    /// Unlike with write, this is a separate step that you must carry out
+    /// manually. The alternative of doing this automatically on Drop has been
+    /// considered, but deemed too magical for the low-level audience of
+    /// raw_write, who will likely prefere this operation to be explicit.
+    ///
+    pub fn submit(self) -> bool {
         // Publish our write buffer as the new back-buffer, setting the dirty
-        // bit to tell the consumer that new data is available in there.
-        let former_back_info = shared_state.back_info.swap(
-            active_idx | BACK_DIRTY_BIT,
-            Ordering::Release  // Publish buffer updates to the reader
+        // bit to tell the consumer that new data is available
+        let former_back_info = self.input.shared.back_info.swap(
+            self.input.write_idx | BACK_DIRTY_BIT,
+            Ordering::AcqRel  // Publish buffer updates to the reader as well
         );
 
-        // The previous back-buffer, which is not reader-visible anymore, will
-        // become our new write buffer. Extract its index from the old info.
-        self.write_idx = former_back_info & BACK_INDEX_MASK
+        // Make the old back buffer, which is not reader-visible anymore, the
+        // new write buffer. We can now safely write into it.
+        self.input.write_idx = former_back_info & BACK_INDEX_MASK;
+
+        // Tell whether the consumer had received our previous submission
+        former_back_info & BACK_DIRTY_BIT == 0
     }
 }
 
@@ -199,18 +240,41 @@ pub struct Output<T: Send> {
 impl<T: Send> Output<T> {
     /// Access the latest value from the triple buffer
     pub fn read(&mut self) -> &T {
+        let (read_buffer_ref, _) = self.read_raw();
+        read_buffer_ref
+    }
+
+    /// Get write access to the latest value and check if it has been updated
+    ///
+    /// This is a lower-level and more error-prone variant of the read() method,
+    /// which gives you the ability to modify the value that was received from
+    /// the producer, and tells you if it has been updated since the last time
+    /// read() or read_raw() was called.
+    ///
+    /// You can use it to optimize memory usage and access patterns, for example
+    /// when you would like to post-process the values that were received from
+    /// the producer without creating a new private value. Another possible
+    /// application is to swap the value in the read buffer with another value
+    /// of your choosing using mem::replace to allow by-value manipulation.
+    ///
+    /// Whatever you do, do remember that as soon as you have discarded your
+    /// reference to the read buffer, it will be swapped under your feet without
+    /// a warning on the next readout if a newer buffer is available.
+    ///
+    pub fn read_raw(&mut self) -> (&mut T, bool) {
         // Access the shared state
         let ref shared_state = *self.shared;
 
         // Check if an update is present in the back-buffer
         let initial_back_info = shared_state.back_info.load(Ordering::Relaxed);
-        if initial_back_info & BACK_DIRTY_BIT != 0 {
+        let updated = initial_back_info & BACK_DIRTY_BIT != 0;
+        if updated {
             // If so, exchange our read buffer with the back-buffer, thusly
             // acquiring exclusive access to the old back buffer while giving
             // the producer a new back-buffer to write to.
             let former_back_info = shared_state.back_info.swap(
                 self.read_idx,
-                Ordering::Acquire  // Synchronize with buffer updates
+                Ordering::AcqRel  // Synchronize with buffer updates
             );
 
             // Extract the old back-buffer index as our new read buffer index
@@ -219,7 +283,7 @@ impl<T: Send> Output<T> {
 
         // Access data from the current (exclusive-access) read buffer
         let read_ptr = shared_state.buffers[self.read_idx].get();
-        unsafe { &*read_ptr }
+        (unsafe { &mut *read_ptr }, updated)
     }
 }
 
