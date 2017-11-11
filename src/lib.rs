@@ -45,7 +45,7 @@ use std::sync::Arc;
 /// TripleBuffer struct after construction, and are further documented below.
 ///
 #[derive(Debug)]
-pub struct TripleBuffer<T: Clone + Send> {
+pub struct TripleBuffer<T: Send> {
     /// Input object used by producers to send updates
     input: Input<T>,
 
@@ -56,12 +56,26 @@ pub struct TripleBuffer<T: Clone + Send> {
 impl<T: Clone + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
     pub fn new(initial: T) -> Self {
+        Self::new_impl(|| initial.clone())
+    }
+}
+//
+impl<T: Default + Send> Default for TripleBuffer<T> {
+    /// Construct a triple buffer with a default-constructed value
+    fn default() -> Self {
+        Self::new_impl(|| T::default())
+    }
+}
+//
+impl<T: Send> TripleBuffer<T> {
+    /// Construct a triple buffer, using a functor to generate initial values
+    fn new_impl<F: FnMut() -> T>(mut generator: F) -> Self {
         // Start with the shared state...
         let shared_state = Arc::new(SharedState {
                                         buffers:
-                                            [UnsafeCell::new(initial.clone()),
-                                             UnsafeCell::new(initial.clone()),
-                                             UnsafeCell::new(initial)],
+                                            [UnsafeCell::new(generator()),
+                                             UnsafeCell::new(generator()),
+                                             UnsafeCell::new(generator())],
                                         back_info: AtomicBackBufferInfo::new(0),
                                     });
 
@@ -106,7 +120,7 @@ impl<T: Clone + Send> Clone for TripleBuffer<T> {
     }
 }
 //
-impl<T: Clone + PartialEq + Send> PartialEq for TripleBuffer<T> {
+impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
     fn eq(&self, other: &Self) -> bool {
         // Compare the shared states. This is safe because at this layer of the
         // interface, one needs an Input/Output &mut to mutate the shared state.
@@ -129,7 +143,7 @@ impl<T: Clone + PartialEq + Send> PartialEq for TripleBuffer<T> {
 /// and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct Input<T: Clone + Send> {
+pub struct Input<T: Send> {
     /// Reference-counted shared state
     shared: Arc<SharedState<T>>,
 
@@ -137,7 +151,7 @@ pub struct Input<T: Clone + Send> {
     write_idx: BufferIndex,
 }
 //
-impl<T: Clone + Send> Input<T> {
+impl<T: Send> Input<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
         // Access the shared state
@@ -174,7 +188,7 @@ impl<T: Clone + Send> Input<T> {
 /// but deadlocks and scheduling-induced slowdowns cannot happen.
 ///
 #[derive(Debug)]
-pub struct Output<T: Clone + Send> {
+pub struct Output<T: Send> {
     /// Reference-counted shared state
     shared: Arc<SharedState<T>>,
 
@@ -182,7 +196,7 @@ pub struct Output<T: Clone + Send> {
     read_idx: BufferIndex,
 }
 //
-impl<T: Clone + Send> Output<T> {
+impl<T: Send> Output<T> {
     /// Access the latest value from the triple buffer
     pub fn read(&mut self) -> &T {
         // Access the shared state
@@ -220,7 +234,7 @@ impl<T: Clone + Send> Output<T> {
 ///   and whether an update was published since the last readout.
 ///
 #[derive(Debug)]
-struct SharedState<T: Clone + Send> {
+struct SharedState<T: Send> {
     /// Data storage buffers
     buffers: [UnsafeCell<T>; 3],
 
@@ -247,7 +261,7 @@ impl<T: Clone + Send> SharedState<T> {
     }
 }
 //
-impl<T: Clone + PartialEq + Send> SharedState<T> {
+impl<T: PartialEq + Send> SharedState<T> {
     /// Equality is unsafe for the same reason as cloning: you must ensure that
     /// no one is concurrently accessing the triple buffer to avoid data races.
     unsafe fn eq(&self, other: &Self) -> bool {
@@ -267,7 +281,7 @@ impl<T: Clone + PartialEq + Send> SharedState<T> {
     }
 }
 //
-unsafe impl<T: Clone + Send> Sync for SharedState<T> {}
+unsafe impl<T: Send> Sync for SharedState<T> {}
 
 
 /// Index types used for triple buffering
