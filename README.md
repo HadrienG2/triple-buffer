@@ -17,7 +17,7 @@ useful for the following class of thread synchronization problems:
 It is currently used as follows:
 
 ```rust
-// Create a triple buffer of any Clone type:
+// Create a triple buffer:
 let buf = TripleBuffer::new(0);
 
 // Split it into an input and output interface, to be respectively sent to

@@ -9,7 +9,7 @@
 //! # Examples
 //!
 //! ```
-//! // Create a triple buffer of any Clone type:
+//! // Create a triple buffer:
 //! use triple_buffer::TripleBuffer;
 //! let buf = TripleBuffer::new(0);
 //!
