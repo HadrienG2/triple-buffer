@@ -203,8 +203,8 @@ impl<T: Send> Input<T> {
     /// Unconditionally publish an update, checking for overwrites
     ///
     /// After updating the write buffer using raw_write_buffer(), you can use
-    /// this method to publish your updates to the consumer. Like overwrite(),
-    /// if will tell you whether an unread value was overwritten.
+    /// this method to publish your updates to the consumer. Like write(), this
+    /// method will tell you whether an unread value was overwritten.
     ///
     #[cfg(raw)]
     pub fn raw_publish(&mut self) -> bool {
