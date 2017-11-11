@@ -154,69 +154,41 @@ pub struct Input<T: Send> {
 impl<T: Send> Input<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
-        let mut write_handle = self.begin_write();
-        *write_handle.buffer() = value;
-        write_handle.submit();
+        self.overwrite(value);
     }
 
-    /// Acquire access to the current write buffer for in-place modification
-    ///
-    /// This is a lower-level, more error-prone variant of write(), which allows
-    /// you to directly write into the producer's buffer. It is intended as a
-    /// way to avoid moves and subsequent re-creations of objects when the
-    /// overhead of that workflow is non-negligible. However, there is quite a
-    /// bit of fine print, and we encourage you to _carefully_ read the
-    /// documentation of PendingWrite when using this data submission method.
-    ///
-    pub fn begin_write(&mut self) -> PendingWrite<T> {
-        PendingWrite { input: self }
-    }
-}
-///
-/// RAII wrapper used by write_raw to enable in-place writes
-pub struct PendingWrite<'a, T: 'a + Clone + Send> {
-    /// Back-reference to the triple buffer input
-    input: &'a mut Input<T>
-}
-//
-impl<'a, T: 'a + Clone + Send> PendingWrite<'a, T> {
-    /// Get a reference to the current write buffer
-    ///
-    /// Please keep in mind that this is **not** the last value that you have
-    /// sent to the consumer. That value is now in the consumer's hands, and
-    /// must therefore be kept out of your reach to ensure thread safety.
-    ///
-    /// The only assumption that you can safely make about the contents of this
-    /// buffer is that it contains a valid value of type T. That's it.
-    ///
-    pub fn buffer(&mut self) -> &mut T {
-        // Access the write buffer, to which we have exclusive access
-        let write_ptr = self.input.shared.buffers[self.input.write_idx].get();
-        unsafe { &mut *write_ptr }
+    /// Check if the consumer has read the last value that we submitted
+    pub fn consumer_in_sync(&self) -> bool {
+        let back_info = self.shared.back_info.load(Ordering::Relaxed);
+        back_info & BACK_DIRTY_BIT == 0
     }
 
-    /// Send the write buffer to the consumer, telling whether the previous
-    /// submission was received by the consumer (true) or overwritten (false)
+    /// Write a new value, checking for overwrites
     ///
-    /// Unlike with write, this is a separate step that you must carry out
-    /// manually. The alternative of doing this automatically on Drop has been
-    /// considered, but deemed too magical for the low-level audience of
-    /// raw_write, who will likely prefere this operation to be explicit.
+    /// Behaves like write(), but tells in addition whether an unread value was
+    /// overwritten because the consumer did not read quickly enough.
     ///
-    pub fn submit(self) -> bool {
-        // Publish our write buffer as the new back-buffer, setting the dirty
-        // bit to tell the consumer that new data is available
-        let former_back_info = self.input.shared.back_info.swap(
-            self.input.write_idx | BACK_DIRTY_BIT,
-            Ordering::AcqRel  // Publish buffer updates to the reader as well
+    pub fn overwrite(&mut self, value: T) -> bool {
+        // Shorthands for the shared state and initial write buffer index
+        let shared = &self.shared;
+        let initial_idx = self.write_idx;
+
+        // Update the write buffer
+        let write_ptr = shared.buffers[initial_idx].get();
+        let write_buffer = unsafe { &mut *write_ptr };
+        *write_buffer = value;
+
+        // Swap the write buffer and the back buffer, setting the dirty bit
+        let former_back_info = shared.back_info.swap(
+            initial_idx | BACK_DIRTY_BIT,
+            Ordering::Release  // Propagate write buffer updates as well
         );
 
-        // Make the old back buffer, which is not reader-visible anymore, the
-        // new write buffer. We can now safely write into it.
-        self.input.write_idx = former_back_info & BACK_INDEX_MASK;
+        // The old back buffer becomes our new write buffer
+        self.write_idx = former_back_info & BACK_INDEX_MASK;
 
-        // Tell whether the consumer had received our previous submission
-        former_back_info & BACK_DIRTY_BIT == 0
+        // Tell whether we have overwritten unread data
+        former_back_info & BACK_DIRTY_BIT != 0
     }
 }
 
