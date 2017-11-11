@@ -163,7 +163,7 @@ impl<T: Send> Input<T> {
         self.publish()
     }
 
-    /// Check if the consumer has read our last submission value yet
+    /// Check if the consumer has read our last submission yet
     ///
     /// This method is only intended for diagnostics purposes. Please do not let
     /// it inform your decision of sending or not sending a value, as that would
@@ -183,7 +183,7 @@ impl<T: Send> Input<T> {
     /// of type T repeatedy when this is an expensive process.
     ///
     /// However, by opting into it, you force yourself to take into account
-    /// implementation details which you could normally ignore.
+    /// subtle implementation details which you could normally ignore.
     ///
     /// First, the buffer does not contain the last value that you sent (which
     /// is now into the hands of the reader). In fact, the consumer is allowed
@@ -212,9 +212,9 @@ impl<T: Send> Input<T> {
     }
 }
 //
-// Internal interfaces used by the triple buffer implementation
+// Internal interface
 impl<T: Send> Input<T> {
-    /// Get raw access to the write buffer (internal version)
+    /// Access the write buffer
     ///
     /// This is safe because the synchronization protocol ensures that we have
     /// exclusive access to this buffer.
@@ -271,31 +271,95 @@ pub struct Output<T: Send> {
     read_idx: BufferIndex,
 }
 //
+// Public interface
 impl<T: Send> Output<T> {
     /// Access the latest value from the triple buffer
     pub fn read(&mut self) -> &T {
-        let (read_buffer_ref, _) = self.read_raw();
-        read_buffer_ref
+        // Fetch updates from the producer
+        self.update();
+
+        // Give access to the read buffer
+        self.read_buffer()
     }
 
-    /// Get write access to the latest value and check if it has been updated
+    /// Tell whether a read buffer update is incoming from the producer
     ///
-    /// This is a lower-level and more error-prone variant of the read() method,
-    /// which gives you the ability to modify the value that was received from
-    /// the producer, and tells you if it has been updated since the last time
-    /// read() or read_raw() was called.
+    /// This method is only intended for diagnostics purposes. Please do not let
+    /// it inform your decision of reading a value or not, as that would
+    /// effectively be building a very poor spinlock-based double buffer
+    /// implementation. If what you truly need is a double buffer, build
+    /// yourself a proper blocking one instead of wasting CPU time.
     ///
-    /// You can use it to optimize memory usage and access patterns, for example
-    /// when you would like to post-process the values that were received from
-    /// the producer without creating a new private value. Another possible
-    /// application is to swap the value in the read buffer with another value
-    /// of your choosing using mem::replace to allow by-value manipulation.
+    pub fn updated(&self) -> bool {
+        let back_info = self.shared.back_info.load(Ordering::Relaxed);
+        back_info & BACK_DIRTY_BIT != 0
+    }
+
+    /// Get raw access to the read buffer
     ///
-    /// Whatever you do, do remember that as soon as you have discarded your
-    /// reference to the read buffer, it will be swapped under your feet without
-    /// a warning on the next readout if a newer buffer is available.
+    /// This advanced interface allows you to modify the contents of the
+    /// read buffer, which can in some case improve performance by avoiding to
+    /// create values of type T when this is an expensive process. One possible
+    /// application, for example, is to post-process values from the producer.
     ///
-    pub fn read_raw(&mut self) -> (&mut T, bool) {
+    /// However, by opting into it, you force yourself to take into account
+    /// subtle implementation details which you could normally ignore.
+    ///
+    /// First, keep in mind that you can lose access to the current read buffer
+    /// any time read() or raw_update() is called, as it can be replaced by an
+    /// updated buffer from the producer automatically.
+    ///
+    /// Second, to reduce the potential for the aforementioned usage error, this
+    /// method does not update the read buffer automatically. You need to call
+    /// raw_update() in order to fetch buffer updates from the producer.
+    ///
+    #[cfg(raw)]
+    pub fn raw_read_buffer(&mut self) -> &mut T {
+        self.read_buffer()
+    }
+
+    /// Update the read buffer
+    ///
+    /// Check for incoming updates from the producer, and if so, update our read
+    /// buffer to the latest data version. This operation will overwrite any
+    /// changes which you have commited into the read buffer.
+    ///
+    /// Return a flag telling whether an update was carried out
+    ///
+    #[cfg(raw)]
+    pub fn raw_update(&mut self) -> bool {
+        self.update()
+    }
+}
+//
+// Internal interface
+impl<T: Send> Output<T> {
+    /// Access the read buffer (internal version)
+    ///
+    /// This is safe because the synchronization protocol ensures that we have
+    /// exclusive access to this buffer.
+    ///
+    fn read_buffer(&mut self) -> &mut T {
+        let read_ptr = self.shared.buffers[self.read_idx].get();
+        unsafe { &mut *read_ptr }
+    }
+
+    /// Tell which memory ordering should be used for buffer swaps
+    ///
+    /// The right answer depends on whether the client is allowed to write into
+    /// the read buffer or not. If it can, then we must propagate these writes
+    /// to the producer. Otherwise, we only need to fetch producer updates.
+    ///
+    fn swap_ordering() -> Ordering {
+        if cfg!(raw) {
+            Ordering::AcqRel
+        } else {
+            Ordering::Acquire
+        }
+    }
+
+    /// Check out incoming read buffer updates (internal version)
+    fn update(&mut self) -> bool {
         // Access the shared state
         let ref shared_state = *self.shared;
 
@@ -308,16 +372,15 @@ impl<T: Send> Output<T> {
             // the producer a new back-buffer to write to.
             let former_back_info = shared_state.back_info.swap(
                 self.read_idx,
-                Ordering::AcqRel  // Synchronize with buffer updates
+                Self::swap_ordering()  // Synchronize with buffer updates
             );
 
-            // Extract the old back-buffer index as our new read buffer index
+            // Make the old back-buffer our new read buffer
             self.read_idx = former_back_info & BACK_INDEX_MASK;
         }
 
-        // Access data from the current (exclusive-access) read buffer
-        let read_ptr = shared_state.buffers[self.read_idx].get();
-        (unsafe { &mut *read_ptr }, updated)
+        // Tell whether an update was carried out
+        updated
     }
 }
 
