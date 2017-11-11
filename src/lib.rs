@@ -151,37 +151,99 @@ pub struct Input<T: Send> {
     write_idx: BufferIndex,
 }
 //
+// Public interface
 impl<T: Send> Input<T> {
-    /// Write a new value into the triple buffer
-    pub fn write(&mut self, value: T) {
-        self.overwrite(value);
+    /// Write a new value into the triple buffer, tell whether an unread value
+    /// was overwritten because the consumer did not read it quickly enough.
+    pub fn write(&mut self, value: T) -> bool {
+        // Update the write buffer
+        *self.write_buffer() = value;
+
+        // Publish our updates and tell whether an overwrite occured
+        self.publish()
     }
 
-    /// Check if the consumer has read the last value that we submitted
-    pub fn consumer_in_sync(&self) -> bool {
+    /// Check if the consumer has read our last submission value yet
+    ///
+    /// This method is only intended for diagnostics purposes. Please do not let
+    /// it inform your decision of sending or not sending a value, as that would
+    /// effectively be building a very poor spinlock-based double buffer
+    /// implementation. If what you truly need is a double buffer, build
+    /// yourself a proper blocking one instead of wasting CPU time.
+    ///
+    pub fn consumed(&self) -> bool {
         let back_info = self.shared.back_info.load(Ordering::Relaxed);
         back_info & BACK_DIRTY_BIT == 0
     }
 
-    /// Write a new value, checking for overwrites
+    /// Get raw access to the write buffer
     ///
-    /// Behaves like write(), but tells in addition whether an unread value was
-    /// overwritten because the consumer did not read quickly enough.
+    /// This advanced interface allows you to update the write buffer in place,
+    /// which can in some case improve performance by avoiding to create values
+    /// of type T repeatedy when this is an expensive process.
     ///
-    pub fn overwrite(&mut self, value: T) -> bool {
-        // Shorthands for the shared state and initial write buffer index
-        let shared = &self.shared;
-        let initial_idx = self.write_idx;
+    /// However, by opting into it, you force yourself to take into account
+    /// implementation details which you could normally ignore.
+    ///
+    /// First, the buffer does not contain the last value that you sent (which
+    /// is now into the hands of the reader). In fact, the consumer is allowed
+    /// to write complete garbage into it if it feels so inclined. All you can
+    /// safely assume is that it contains a valid value of type T.
+    ///
+    /// Second, we do not send updates automatically. You need to call
+    /// raw_publish() in order to propagate a buffer update to the consumer.
+    /// Alternative designs based on Drop were considered, but ultimately deemed
+    /// too magical for the target audience of this method.
+    ///
+    #[cfg(raw)]
+    pub fn raw_write_buffer(&mut self) -> &mut T {
+        self.write_buffer()
+    }
 
-        // Update the write buffer
-        let write_ptr = shared.buffers[initial_idx].get();
-        let write_buffer = unsafe { &mut *write_ptr };
-        *write_buffer = value;
+    /// Unconditionally publish an update, checking for overwrites
+    ///
+    /// After updating the write buffer using raw_write_buffer(), you can use
+    /// this method to publish your updates to the consumer. Like overwrite(),
+    /// if will tell you whether an unread value was overwritten.
+    ///
+    #[cfg(raw)]
+    pub fn raw_publish(&mut self) -> bool {
+        self.publish()
+    }
+}
+//
+// Internal interfaces used by the triple buffer implementation
+impl<T: Send> Input<T> {
+    /// Get raw access to the write buffer (internal version)
+    ///
+    /// This is safe because the synchronization protocol ensures that we have
+    /// exclusive access to this buffer.
+    ///
+    fn write_buffer(&mut self) -> &mut T {
+        let write_ptr = self.shared.buffers[self.write_idx].get();
+        unsafe { &mut *write_ptr }
+    }
 
+    /// Tell which memory ordering should be used for buffer swaps
+    ///
+    /// The right answer depends on whether the consumer is allowed to write
+    /// into its read buffer or not. If it can, then we must synchronize with
+    /// its writes. If not, we only need to propagate our own writes.
+    ///
+    fn swap_ordering() -> Ordering {
+        if cfg!(raw) {
+            Ordering::AcqRel
+        } else {
+            Ordering::Release
+        }
+    }
+
+    /// Publish an update, checking for overwrites (internal version)
+    fn publish(&mut self) -> bool {
         // Swap the write buffer and the back buffer, setting the dirty bit
-        let former_back_info = shared.back_info.swap(
-            initial_idx | BACK_DIRTY_BIT,
-            Ordering::Release  // Propagate write buffer updates as well
+        let former_back_info = self.shared.back_info.swap(
+            self.write_idx | BACK_DIRTY_BIT,
+            Self::swap_ordering()  // Propagate buffer updates as well
         );
 
         // The old back buffer becomes our new write buffer
