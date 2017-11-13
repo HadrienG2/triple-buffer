@@ -39,7 +39,7 @@
 //! cost, which is why you will need to enable it explicitly using the "raw"
 //! [cargo feature](http://doc.crates.io/manifest.html#usage-in-end-products).
 //!
-//! ```ignore (cargo-test-does-not-forward-features-to-doctests-properly-yet)
+//! ```rust
 //! # #[cfg(raw)]
 //! # fn test_impl() {
 //! #
@@ -76,8 +76,11 @@
 //! # }
 //! #
 //! # #[cfg(not(raw))]
+//! # #[deprecated]
 //! # fn test_impl() {
-//! #     panic!("Must test with the raw feature on!")
+//! #     // If you see a warning here, it means that this example was compiled
+//! #     // without the required "raw" feature. We cannot make this a hard
+//! #     // error yet because current Cargo does not allow adding that feature.
 //! # }
 //! #
 //! # test_impl()
