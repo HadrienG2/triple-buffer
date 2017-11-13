@@ -14,7 +14,7 @@ useful for the following class of thread synchronization problems:
 - The producer wants to update a shared memory value periodically
 - The consumer wants to access the latest update from the producer at any time
 
-It is currently used as follows:
+The simplest way to use it is as follows:
 
 ```rust
 // Create a triple buffer:
@@ -43,7 +43,8 @@ Compared to a mutex:
   scheduling induced slowdown is possible.
 - Allows the producer and consumer to work simultaneously
 - Uses a lot more memory (3x payload + 4 integers vs 1x payload + 1 bool)
-- Does not allow in-place updates, new value must be cloned or moved
+- Does not allow in-place updates, as the producer and consumer do not access
+  the same memory location
 - Should be slower if updates are rare and in-place updates are much more
   efficient than moves, faster otherwise.
 

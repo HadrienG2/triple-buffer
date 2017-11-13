@@ -422,8 +422,7 @@ impl<T: Send> Output<T> {
         let ref shared_state = *self.shared;
 
         // Check if an update is present in the back-buffer
-        let initial_back_info = shared_state.back_info.load(Ordering::Relaxed);
-        let updated = initial_back_info & BACK_DIRTY_BIT != 0;
+        let updated = self.updated();
         if updated {
             // If so, exchange our output buffer with the back-buffer, thusly
             // acquiring exclusive access to the old back buffer while giving
@@ -623,15 +622,15 @@ mod tests {
             let mut expected_buf = old_buf.clone();
             let ref expected_shared = expected_buf.input.shared;
 
-            // We expect the new back index to point to the former read buffer
+            // We expect the new back index to point to the former output buffer
             // and the back buffer's dirty bit to be unset.
-            expected_shared.back_info.store(old_buf.output.read_idx,
+            expected_shared.back_info.store(old_buf.output.output_idx,
                                             Ordering::Relaxed);
 
-            // We expect the new read index to point to the former back buffer
+            // We expect the new output index to point to the former back buffer
             let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
             let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
-            expected_buf.output.read_idx = old_back_idx;
+            expected_buf.output.output_idx = old_back_idx;
 
             // Nothing else should have changed
             assert_eq!(buf, expected_buf);
