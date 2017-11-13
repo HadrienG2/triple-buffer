@@ -8,13 +8,17 @@
 //!
 //! # Examples
 //!
+//! For many use cases, you can use the default interface, designed for maximal
+//! ergonomics and synchronization performance, which is based on moving values
+//! into the buffer and subsequently accessing them via shared references:
+//!
 //! ```
-//! // Create a triple buffer:
+//! // Create a triple buffer
 //! use triple_buffer::TripleBuffer;
 //! let buf = TripleBuffer::new(0);
 //!
 //! // Split it into an input and output interface, to be respectively sent to
-//! // the producer thread and the consumer thread:
+//! // the producer thread and the consumer thread
 //! let (mut buf_input, mut buf_output) = buf.split();
 //!
 //! // The producer can move a value into the buffer at any time
@@ -23,6 +27,60 @@
 //! // The consumer can access the latest value from the producer at any time
 //! let latest_value_ref = buf_output.read();
 //! assert_eq!(*latest_value_ref, 42);
+//! ```
+//!
+//! In situations where moving the original value away and being unable to
+//! modify it after the fact is too costly, such as if creating a new value
+//! involves dynamic memory allocation, you can opt into the lower-level "raw"
+//! interface, which allows you to access the buffer's data in place and
+//! precisely control when updates are propagated.
+//!
+//! This data access method is more error-prone and comes at a small performance
+//! cost, which is why you will need to enable it explicitly using the "raw"
+//! [cargo feature](http://doc.crates.io/manifest.html#usage-in-end-products).
+//!
+//! ```ignore (cargo-test-does-not-forward-features-to-doctests-properly-yet)
+//! # #[cfg(raw)]
+//! # fn test_impl() {
+//! #
+//! // Create and split a triple buffer
+//! use triple_buffer::TripleBuffer;
+//! let buf = TripleBuffer::new(String::with_capacity(42));
+//! let (mut buf_input, mut buf_output) = buf.split();
+//!
+//! // Mutate the input buffer in place
+//! {
+//!     // Acquire a reference to the input buffer
+//!     let raw_input = buf_input.raw_input_buffer();
+//!
+//!     // In general, you don't know what's inside of the buffer, so you should
+//!     // always reset the value before use (this is a type-specific process).
+//!     raw_input.clear();
+//!
+//!     // Perform an in-place update
+//!     raw_input.push_str("Hello, ");
+//! }
+//!
+//! // Publish the input buffer update
+//! buf_input.raw_publish();
+//!
+//! // Manually fetch the buffer update from the consumer interface
+//! buf_output.raw_update();
+//!
+//! // Acquire a mutable reference to the output buffer
+//! let raw_output = buf_output.raw_output_buffer();
+//!
+//! // Post-process the output value before use
+//! raw_output.push_str("world!");
+//! #
+//! # }
+//! #
+//! # #[cfg(not(raw))]
+//! # fn test_impl() {
+//! #     panic!("Must test with the raw feature on!")
+//! # }
+//! #
+//! # test_impl()
 //! ```
 
 #![deny(missing_docs)]
@@ -37,8 +95,9 @@ use std::sync::Arc;
 /// A triple buffer, useful for nonblocking and thread-safe data sharing
 ///
 /// A triple buffer is a single-producer single-consumer nonblocking
-/// communication channel which behaves like a shared variable: writer submits
-/// regular updates, reader accesses latest available value at any time.
+/// communication channel which behaves like a shared variable: the producer
+/// submits regular updates, and the consumer accesses the latest available
+/// value whenever it feels like it.
 ///
 /// The input and output fields of this struct are what producers and consumers
 /// actually use in practice. They can safely be moved away from the
@@ -83,11 +142,11 @@ impl<T: Send> TripleBuffer<T> {
         TripleBuffer {
             input: Input {
                 shared: shared_state.clone(),
-                write_idx: 1,
+                input_idx: 1,
             },
             output: Output {
                 shared: shared_state,
-                read_idx: 2,
+                output_idx: 2,
             },
         }
     }
@@ -110,11 +169,11 @@ impl<T: Clone + Send> Clone for TripleBuffer<T> {
         TripleBuffer {
             input: Input {
                 shared: shared_state.clone(),
-                write_idx: self.input.write_idx,
+                input_idx: self.input.input_idx,
             },
             output: Output {
                 shared: shared_state,
-                read_idx: self.output.read_idx,
+                output_idx: self.output.output_idx,
             },
         }
     }
@@ -129,8 +188,8 @@ impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
 
         // Compare the rest of the triple buffer states
         shared_states_equal &&
-        (self.input.write_idx == other.input.write_idx) &&
-        (self.output.read_idx == other.output.read_idx)
+        (self.input.input_idx == other.input.input_idx) &&
+        (self.output.output_idx == other.output.output_idx)
     }
 }
 
@@ -147,23 +206,22 @@ pub struct Input<T: Send> {
     /// Reference-counted shared state
     shared: Arc<SharedState<T>>,
 
-    /// Index of the write buffer (which is private to the producer)
-    write_idx: BufferIndex,
+    /// Index of the input buffer (which is private to the producer)
+    input_idx: BufferIndex,
 }
 //
 // Public interface
 impl<T: Send> Input<T> {
-    /// Write a new value into the triple buffer, tell whether an unread value
-    /// was overwritten because the consumer did not read it quickly enough.
-    pub fn write(&mut self, value: T) -> bool {
-        // Update the write buffer
-        *self.write_buffer() = value;
+    /// Write a new value into the triple buffer
+    pub fn write(&mut self, value: T) {
+        // Update the input buffer
+        *self.input_buffer() = value;
 
-        // Publish our updates and tell whether an overwrite occured
-        self.publish()
+        // Publish our update to the consumer
+        self.publish();
     }
 
-    /// Check if the consumer has read our last submission yet
+    /// Check if the consumer has fetched our last submission yet
     ///
     /// This method is only intended for diagnostics purposes. Please do not let
     /// it inform your decision of sending or not sending a value, as that would
@@ -176,9 +234,9 @@ impl<T: Send> Input<T> {
         back_info & BACK_DIRTY_BIT == 0
     }
 
-    /// Get raw access to the write buffer
+    /// Get raw access to the input buffer
     ///
-    /// This advanced interface allows you to update the write buffer in place,
+    /// This advanced interface allows you to update the input buffer in place,
     /// which can in some case improve performance by avoiding to create values
     /// of type T repeatedy when this is an expensive process.
     ///
@@ -186,7 +244,7 @@ impl<T: Send> Input<T> {
     /// subtle implementation details which you could normally ignore.
     ///
     /// First, the buffer does not contain the last value that you sent (which
-    /// is now into the hands of the reader). In fact, the consumer is allowed
+    /// is now into the hands of the consumer). In fact, the consumer is allowed
     /// to write complete garbage into it if it feels so inclined. All you can
     /// safely assume is that it contains a valid value of type T.
     ///
@@ -196,15 +254,15 @@ impl<T: Send> Input<T> {
     /// too magical for the target audience of this method.
     ///
     #[cfg(raw)]
-    pub fn raw_write_buffer(&mut self) -> &mut T {
-        self.write_buffer()
+    pub fn raw_input_buffer(&mut self) -> &mut T {
+        self.input_buffer()
     }
 
     /// Unconditionally publish an update, checking for overwrites
     ///
-    /// After updating the write buffer using raw_write_buffer(), you can use
-    /// this method to publish your updates to the consumer. Like write(), this
-    /// method will tell you whether an unread value was overwritten.
+    /// After updating the input buffer using raw_input_buffer(), you can use
+    /// this method to publish your updates to the consumer. It will send back
+    /// an output flag which tells you whether an unread value was overwritten.
     ///
     #[cfg(raw)]
     pub fn raw_publish(&mut self) -> bool {
@@ -214,20 +272,20 @@ impl<T: Send> Input<T> {
 //
 // Internal interface
 impl<T: Send> Input<T> {
-    /// Access the write buffer
+    /// Access the input buffer
     ///
     /// This is safe because the synchronization protocol ensures that we have
     /// exclusive access to this buffer.
     ///
-    fn write_buffer(&mut self) -> &mut T {
-        let write_ptr = self.shared.buffers[self.write_idx].get();
-        unsafe { &mut *write_ptr }
+    fn input_buffer(&mut self) -> &mut T {
+        let input_ptr = self.shared.buffers[self.input_idx].get();
+        unsafe { &mut *input_ptr }
     }
 
     /// Tell which memory ordering should be used for buffer swaps
     ///
     /// The right answer depends on whether the consumer is allowed to write
-    /// into its read buffer or not. If it can, then we must synchronize with
+    /// into the output buffer or not. If it can, then we must synchronize with
     /// its writes. If not, we only need to propagate our own writes.
     ///
     fn swap_ordering() -> Ordering {
@@ -240,14 +298,14 @@ impl<T: Send> Input<T> {
 
     /// Publish an update, checking for overwrites (internal version)
     fn publish(&mut self) -> bool {
-        // Swap the write buffer and the back buffer, setting the dirty bit
+        // Swap the input buffer and the back buffer, setting the dirty bit
         let former_back_info = self.shared.back_info.swap(
-            self.write_idx | BACK_DIRTY_BIT,
+            self.input_idx | BACK_DIRTY_BIT,
             Self::swap_ordering()  // Propagate buffer updates as well
         );
 
-        // The old back buffer becomes our new write buffer
-        self.write_idx = former_back_info & BACK_INDEX_MASK;
+        // The old back buffer becomes our new input buffer
+        self.input_idx = former_back_info & BACK_INDEX_MASK;
 
         // Tell whether we have overwritten unread data
         former_back_info & BACK_DIRTY_BIT != 0
@@ -267,8 +325,8 @@ pub struct Output<T: Send> {
     /// Reference-counted shared state
     shared: Arc<SharedState<T>>,
 
-    /// Index of the read buffer (which is private to the consumer)
-    read_idx: BufferIndex,
+    /// Index of the output buffer (which is private to the consumer)
+    output_idx: BufferIndex,
 }
 //
 // Public interface
@@ -278,11 +336,11 @@ impl<T: Send> Output<T> {
         // Fetch updates from the producer
         self.update();
 
-        // Give access to the read buffer
-        self.read_buffer()
+        // Give access to the output buffer
+        self.output_buffer()
     }
 
-    /// Tell whether a read buffer update is incoming from the producer
+    /// Tell whether a buffer update is incoming from the producer
     ///
     /// This method is only intended for diagnostics purposes. Please do not let
     /// it inform your decision of reading a value or not, as that would
@@ -295,34 +353,34 @@ impl<T: Send> Output<T> {
         back_info & BACK_DIRTY_BIT != 0
     }
 
-    /// Get raw access to the read buffer
+    /// Get raw access to the output buffer
     ///
-    /// This advanced interface allows you to modify the contents of the
-    /// read buffer, which can in some case improve performance by avoiding to
-    /// create values of type T when this is an expensive process. One possible
+    /// This advanced interface allows you to modify the contents of the output
+    /// buffer, which can in some case improve performance by avoiding to create
+    /// values of type T when this is an expensive process. One possible
     /// application, for example, is to post-process values from the producer.
     ///
     /// However, by opting into it, you force yourself to take into account
     /// subtle implementation details which you could normally ignore.
     ///
-    /// First, keep in mind that you can lose access to the current read buffer
-    /// any time read() or raw_update() is called, as it can be replaced by an
-    /// updated buffer from the producer automatically.
+    /// First, keep in mind that you can lose access to the current output
+    /// buffer any time read() or raw_update() is called, as it will be replaced
+    /// by an updated buffer from the producer automatically.
     ///
     /// Second, to reduce the potential for the aforementioned usage error, this
-    /// method does not update the read buffer automatically. You need to call
+    /// method does not update the output buffer automatically. You need to call
     /// raw_update() in order to fetch buffer updates from the producer.
     ///
     #[cfg(raw)]
-    pub fn raw_read_buffer(&mut self) -> &mut T {
-        self.read_buffer()
+    pub fn raw_output_buffer(&mut self) -> &mut T {
+        self.output_buffer()
     }
 
-    /// Update the read buffer
+    /// Update the output buffer
     ///
-    /// Check for incoming updates from the producer, and if so, update our read
-    /// buffer to the latest data version. This operation will overwrite any
-    /// changes which you have commited into the read buffer.
+    /// Check for incoming updates from the producer, and if so, update our
+    /// output buffer to the latest data version. This operation will overwrite
+    /// any changes which you may have commited into the output buffer.
     ///
     /// Return a flag telling whether an update was carried out
     ///
@@ -334,21 +392,21 @@ impl<T: Send> Output<T> {
 //
 // Internal interface
 impl<T: Send> Output<T> {
-    /// Access the read buffer (internal version)
+    /// Access the output buffer (internal version)
     ///
     /// This is safe because the synchronization protocol ensures that we have
     /// exclusive access to this buffer.
     ///
-    fn read_buffer(&mut self) -> &mut T {
-        let read_ptr = self.shared.buffers[self.read_idx].get();
-        unsafe { &mut *read_ptr }
+    fn output_buffer(&mut self) -> &mut T {
+        let output_ptr = self.shared.buffers[self.output_idx].get();
+        unsafe { &mut *output_ptr }
     }
 
     /// Tell which memory ordering should be used for buffer swaps
     ///
     /// The right answer depends on whether the client is allowed to write into
-    /// the read buffer or not. If it can, then we must propagate these writes
-    /// to the producer. Otherwise, we only need to fetch producer updates.
+    /// the output buffer or not. If it can, then we must propagate these writes
+    /// back to the producer. Otherwise, we only need to fetch producer updates.
     ///
     fn swap_ordering() -> Ordering {
         if cfg!(raw) {
@@ -358,7 +416,7 @@ impl<T: Send> Output<T> {
         }
     }
 
-    /// Check out incoming read buffer updates (internal version)
+    /// Check out incoming output buffer updates (internal version)
     fn update(&mut self) -> bool {
         // Access the shared state
         let ref shared_state = *self.shared;
@@ -367,16 +425,16 @@ impl<T: Send> Output<T> {
         let initial_back_info = shared_state.back_info.load(Ordering::Relaxed);
         let updated = initial_back_info & BACK_DIRTY_BIT != 0;
         if updated {
-            // If so, exchange our read buffer with the back-buffer, thusly
+            // If so, exchange our output buffer with the back-buffer, thusly
             // acquiring exclusive access to the old back buffer while giving
             // the producer a new back-buffer to write to.
             let former_back_info = shared_state.back_info.swap(
-                self.read_idx,
+                self.output_idx,
                 Self::swap_ordering()  // Synchronize with buffer updates
             );
 
-            // Make the old back-buffer our new read buffer
-            self.read_idx = former_back_info & BACK_INDEX_MASK;
+            // Make the old back-buffer our new output buffer
+            self.output_idx = former_back_info & BACK_INDEX_MASK;
         }
 
         // Tell whether an update was carried out
@@ -387,8 +445,8 @@ impl<T: Send> Output<T> {
 
 /// Triple buffer shared state
 ///
-/// In a triple buffering communication protocol, the reader and writer share
-/// the following storage:
+/// In a triple buffering communication protocol, the producer and consumer
+/// share the following storage:
 ///
 /// - Three memory buffers suitable for storing the data at hand
 /// - Information about the back-buffer: which buffer is the current back-buffer
@@ -450,7 +508,7 @@ unsafe impl<T: Send> Sync for SharedState<T> {}
 /// These types are used to index into triple buffers. In addition, the
 /// BackBufferInfo type is actually a bitfield, whose third bit (numerical
 /// value: 4) is set to 1 to indicate that the producer published an update into
-/// the back-buffer, and reset to 0 when the reader fetches the update.
+/// the back-buffer, and reset to 0 when the consumer fetches the update.
 ///
 /// TODO: Switch to i8 / AtomicI8 once the later is stable
 ///
@@ -482,19 +540,19 @@ mod tests {
         let back_idx = back_info & ::BACK_INDEX_MASK;
         let back_buffer_clean = back_info & ::BACK_DIRTY_BIT == 0;
 
-        // Write-/read-/back-buffer indexes must be in range
-        assert!(index_in_range(buf.input.write_idx));
-        assert!(index_in_range(buf.output.read_idx));
+        // Input-/output-/back-buffer indexes must be in range
+        assert!(index_in_range(buf.input.input_idx));
+        assert!(index_in_range(buf.output.output_idx));
         assert!(index_in_range(back_idx));
 
-        // Write-/read-/back-buffer indexes must be distinct
-        assert!(buf.input.write_idx != buf.output.read_idx);
-        assert!(buf.input.write_idx != back_idx);
-        assert!(buf.output.read_idx != back_idx);
+        // Input-/output-/back-buffer indexes must be distinct
+        assert!(buf.input.input_idx != buf.output.output_idx);
+        assert!(buf.input.input_idx != back_idx);
+        assert!(buf.output.output_idx != back_idx);
 
-        // Read buffer must be properly initialized
-        let read_ptr = buf_shared.buffers[buf.output.read_idx].get();
-        assert_eq!(unsafe { *read_ptr }, 42);
+        // Output buffer must be properly initialized
+        let output_ptr = buf_shared.buffers[buf.output.output_idx].get();
+        assert_eq!(unsafe { *output_ptr }, 42);
 
         // Back-buffer must be initially clean
         assert!(back_buffer_clean);
@@ -519,23 +577,23 @@ mod tests {
             let mut expected_buf = old_buf.clone();
             let ref expected_shared = expected_buf.input.shared;
 
-            // We expect the former write buffer to have received the new value
-            let old_write_idx = old_buf.input.write_idx;
-            let write_ptr = expected_shared.buffers[old_write_idx].get();
+            // We expect the former input buffer to have received the new value
+            let old_input_idx = old_buf.input.input_idx;
+            let input_ptr = expected_shared.buffers[old_input_idx].get();
             unsafe {
-                *write_ptr = true;
+                *input_ptr = true;
             }
 
-            // We expect the former write buffer to become the new back buffer
+            // We expect the former input buffer to become the new back buffer
             // and the back buffer's dirty bit to be set
             expected_shared.back_info
-                .store(old_write_idx | ::BACK_DIRTY_BIT,
+                .store(old_input_idx | ::BACK_DIRTY_BIT,
                        Ordering::Relaxed);
 
-            // We expect the old back buffer to become the new write buffer
+            // We expect the old back buffer to become the new input buffer
             let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
             let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
-            expected_buf.input.write_idx = old_back_idx;
+            expected_buf.input.input_idx = old_back_idx;
 
             // Nothing else should have changed
             assert_eq!(buf, expected_buf);
@@ -596,14 +654,6 @@ mod tests {
     }
 
     /// Check that contended concurrent reads and writes work
-    ///
-    /// **WARNING:** This test unfortunately needs to have timing-dependent
-    /// behaviour to do its job. If it fails for you, try the following:
-    ///
-    /// - Close running applications in the background
-    /// - Re-run the tests with only one OS thread (--test-threads=1)
-    /// - Increase the writer sleep period
-    ///
     #[test]
     #[ignore]
     fn contended_concurrent_access() {
@@ -644,7 +694,12 @@ mod tests {
 
     /// Check that uncontended concurrent reads and writes work
     ///
-    /// **WARNING:** Caveats of contented concurrent access also apply here
+    /// **WARNING:** This test unfortunately needs to have timing-dependent
+    /// behaviour to do its job. If it fails for you, try the following:
+    ///
+    /// - Close running applications in the background
+    /// - Re-run the tests with only one OS thread (--test-threads=1)
+    /// - Increase the writer sleep period
     ///
     #[test]
     #[ignore]
