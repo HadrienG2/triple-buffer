@@ -564,7 +564,142 @@ mod tests {
         assert!(back_buffer_clean);
     }
 
-    // TODO: Check that Clone and PartialEq work reliably
+    /// Check that the shared state's unsafe equality operator works
+    #[test]
+    fn partial_eq_shared() {
+        // Let's create some dummy shared state
+        let dummy_state = ::SharedState::<u16> {
+            buffers: [::UnsafeCell::new(111),
+                      ::UnsafeCell::new(222),
+                      ::UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        };
+
+        // Check that the dummy state is equal to itself
+        assert!(unsafe { dummy_state.eq(&dummy_state) });
+
+        // Check that it's not equal to a state where buffer contents differ
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [::UnsafeCell::new(114),
+                      ::UnsafeCell::new(222),
+                      ::UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        })});
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [::UnsafeCell::new(111),
+                      ::UnsafeCell::new(225),
+                      ::UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        })});
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [::UnsafeCell::new(111),
+                      ::UnsafeCell::new(222),
+                      ::UnsafeCell::new(336)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        })});
+
+        // Check that it's not equal to a state where the back info differs
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [::UnsafeCell::new(111),
+                      ::UnsafeCell::new(222),
+                      ::UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b10),
+        })});
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [::UnsafeCell::new(111),
+                      ::UnsafeCell::new(222),
+                      ::UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b01),
+        })});
+    }
+
+    /// Check that TripleBuffer's PartialEq impl works
+    #[test]
+    fn partial_eq() {
+        // Create a triple buffer
+        let buf = ::TripleBuffer::new("test");
+
+        // Check that it is equal to itself
+        assert_eq!(buf, buf);
+
+        // Make another buffer with different contents. As buffer creation is
+        // deterministic, this should only have an impact on the shared state,
+        // but the buffers should nevertheless be considered different.
+        let buf2 = ::TripleBuffer::new("taste");
+        assert_eq!(buf.input.input_idx, buf2.input.input_idx);
+        assert_eq!(buf.output.output_idx, buf2.output.output_idx);
+        assert!(buf != buf2);
+
+        // Check that changing either the input or output buffer index will
+        // also lead two TripleBuffers to be considered different (this test
+        // technically creates an invalid TripleBuffer state, but it's the only
+        // way to check that the PartialEq impl is exhaustive)
+        let mut buf3 = ::TripleBuffer::new("test");
+        assert_eq!(buf, buf3);
+        let old_input_idx = buf3.input.input_idx;
+        buf3.input.input_idx = buf3.output.output_idx;
+        assert!(buf != buf3);
+        buf3.input.input_idx = old_input_idx;
+        buf3.output.output_idx = old_input_idx;
+        assert!(buf != buf3);
+    }
+
+    /// Check that the shared state's unsafe clone operator works
+    #[test]
+    fn clone_shared() {
+        // Let's create some dummy shared state
+        let dummy_state = ::SharedState::<u8> {
+            buffers: [::UnsafeCell::new(123),
+                      ::UnsafeCell::new(231),
+                      ::UnsafeCell::new(132)],
+            back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b01),
+        };
+
+        // Now, try to clone it
+        let dummy_state_copy = unsafe { dummy_state.clone() };
+
+        // Check that the contents of the original state did not change
+        assert!(unsafe { dummy_state.eq(&::SharedState::<u8> {
+            buffers: [::UnsafeCell::new(123),
+                      ::UnsafeCell::new(231),
+                      ::UnsafeCell::new(132)],
+            back_info: ::AtomicBackBufferInfo::new(
+                ::BACK_DIRTY_BIT & 0b01
+            ),
+        })});
+
+        // Check that the contents of the original and final state are identical
+        assert!(unsafe { dummy_state.eq(&dummy_state_copy) });
+    }
+
+    /// Check that TripleBuffer's Clone impl works
+    #[test]
+    fn clone() {
+        // Create a triple buffer
+        let mut buf = ::TripleBuffer::new(4.2);
+
+        // Put it in a nontrivial state
+        unsafe {
+            *buf.input.shared.buffers[0].get() = 1.2;
+            *buf.input.shared.buffers[1].get() = 3.4;
+            *buf.input.shared.buffers[2].get() = 5.6;
+        }
+        buf.input.shared.back_info.store(::BACK_DIRTY_BIT & 0b01,
+                                         Ordering::Relaxed);
+        buf.input.input_idx = 0b10;
+        buf.output.output_idx = 0b00;
+
+        // Now clone it
+        let buf_clone = buf.clone();
+
+        // Check that the clone uses separate shared data storage
+        assert!(as_ptr(&buf.input.shared) != as_ptr(&buf_clone.input.shared));
+        assert!(as_ptr(&buf.output.shared) != as_ptr(&buf_clone.output.shared));
+
+        // Check that it is identical from PartialEq's point of view
+        assert_eq!(buf, buf_clone);
+    }
+
     // TODO: Check that queries work well (and don't mutate the object)
     // TODO: Check that publish/update work in isolation
 
