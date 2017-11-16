@@ -525,6 +525,7 @@ const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::Ordering;
+    use std::ops::Deref;
     use std::thread;
     use std::time::Duration;
     use testbench;
@@ -535,6 +536,9 @@ mod tests {
     fn initial_state() {
         // Let's create a triple buffer
         let buf = ::TripleBuffer::new(42);
+
+        // Check that the input and output point to the same shared state
+        assert_eq!(as_ptr(&buf.input.shared), as_ptr(&buf.output.shared));
 
         // Access the shared state and decode back-buffer information
         let ref buf_shared = *buf.input.shared;
@@ -559,6 +563,10 @@ mod tests {
         // Back-buffer must be initially clean
         assert!(back_buffer_clean);
     }
+
+    // TODO: Check that Clone and PartialEq work reliably
+    // TODO: Check that queries work well (and don't mutate the object)
+    // TODO: Check that publish/update work in isolation
 
     /// Check that (sequentially) writing to a triple buffer works
     #[test]
@@ -747,6 +755,11 @@ mod tests {
     #[allow(unused_comparisons)]
     fn index_in_range(idx: ::BufferIndex) -> bool {
         (idx >= 0) & (idx <= 2)
+    }
+
+    /// Get a pointer to the target of some reference (e.g. an &, an Arc...)
+    fn as_ptr<P: Deref>(ref_like: &P) -> *const P::Target {
+        &(**ref_like) as *const _
     }
 }
 
