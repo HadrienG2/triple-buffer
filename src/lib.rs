@@ -698,6 +698,17 @@ mod tests {
 
         // Check that it is identical from PartialEq's point of view
         assert_eq!(buf, buf_clone);
+
+        // Check that the contents of the original buffer did not change
+        unsafe {
+            assert_eq!(*buf.input.shared.buffers[0].get(), 1.2);
+            assert_eq!(*buf.input.shared.buffers[1].get(), 3.4);
+            assert_eq!(*buf.input.shared.buffers[2].get(), 5.6);
+        }
+        assert_eq!(buf.input.shared.back_info.load(Ordering::Relaxed),
+                   ::BACK_DIRTY_BIT & 0b01);
+        assert_eq!(buf.input.input_idx, 0b10);
+        assert_eq!(buf.output.output_idx, 0b00);
     }
 
     // TODO: Check that queries work well (and don't mutate the object)
