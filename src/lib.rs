@@ -90,7 +90,7 @@
 
 extern crate testbench;
 
-use std::cell::UnsafeCell;
+use std::cellUnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -524,6 +524,7 @@ const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 /// Unit tests
 #[cfg(test)]
 mod tests {
+    use std::cellUnsafeCell;
     use std::sync::atomic::Ordering;
     use std::ops::Deref;
     use std::thread;
@@ -569,9 +570,9 @@ mod tests {
     fn partial_eq_shared() {
         // Let's create some dummy shared state
         let dummy_state = ::SharedState::<u16> {
-            buffers: [::UnsafeCell::new(111),
-                      ::UnsafeCell::new(222),
-                      ::UnsafeCell::new(333)],
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
             back_info: ::AtomicBackBufferInfo::new(0b10),
         };
 
@@ -580,35 +581,35 @@ mod tests {
 
         // Check that it's not equal to a state where buffer contents differ
         assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
-            buffers: [::UnsafeCell::new(114),
-                      ::UnsafeCell::new(222),
-                      ::UnsafeCell::new(333)],
+            buffers: [UnsafeCell::new(114),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
             back_info: ::AtomicBackBufferInfo::new(0b10),
         })});
         assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
-            buffers: [::UnsafeCell::new(111),
-                      ::UnsafeCell::new(225),
-                      ::UnsafeCell::new(333)],
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(225),
+                      UnsafeCell::new(333)],
             back_info: ::AtomicBackBufferInfo::new(0b10),
         })});
         assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
-            buffers: [::UnsafeCell::new(111),
-                      ::UnsafeCell::new(222),
-                      ::UnsafeCell::new(336)],
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(336)],
             back_info: ::AtomicBackBufferInfo::new(0b10),
         })});
 
         // Check that it's not equal to a state where the back info differs
         assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
-            buffers: [::UnsafeCell::new(111),
-                      ::UnsafeCell::new(222),
-                      ::UnsafeCell::new(333)],
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
             back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b10),
         })});
         assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
-            buffers: [::UnsafeCell::new(111),
-                      ::UnsafeCell::new(222),
-                      ::UnsafeCell::new(333)],
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
             back_info: ::AtomicBackBufferInfo::new(0b01),
         })});
     }
@@ -649,9 +650,9 @@ mod tests {
     fn clone_shared() {
         // Let's create some dummy shared state
         let dummy_state = ::SharedState::<u8> {
-            buffers: [::UnsafeCell::new(123),
-                      ::UnsafeCell::new(231),
-                      ::UnsafeCell::new(132)],
+            buffers: [UnsafeCell::new(123),
+                      UnsafeCell::new(231),
+                      UnsafeCell::new(132)],
             back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b01),
         };
 
@@ -660,9 +661,9 @@ mod tests {
 
         // Check that the contents of the original state did not change
         assert!(unsafe { dummy_state.eq(&::SharedState::<u8> {
-            buffers: [::UnsafeCell::new(123),
-                      ::UnsafeCell::new(231),
-                      ::UnsafeCell::new(132)],
+            buffers: [UnsafeCell::new(123),
+                      UnsafeCell::new(231),
+                      UnsafeCell::new(132)],
             back_info: ::AtomicBackBufferInfo::new(
                 ::BACK_DIRTY_BIT & 0b01
             ),
