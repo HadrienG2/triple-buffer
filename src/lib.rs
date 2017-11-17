@@ -90,7 +90,7 @@
 
 extern crate testbench;
 
-use std::cellUnsafeCell;
+use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -524,7 +524,7 @@ const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 /// Unit tests
 #[cfg(test)]
 mod tests {
-    use std::cellUnsafeCell;
+    use std::cell::UnsafeCell;
     use std::sync::atomic::Ordering;
     use std::ops::Deref;
     use std::thread;
