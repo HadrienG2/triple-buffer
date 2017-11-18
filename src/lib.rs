@@ -525,6 +525,7 @@ const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 #[cfg(test)]
 mod tests {
     use std::cell::UnsafeCell;
+    use std::fmt::Debug;
     use std::sync::atomic::Ordering;
     use std::ops::Deref;
     use std::thread;
@@ -536,33 +537,9 @@ mod tests {
     #[test]
     fn initial_state() {
         // Let's create a triple buffer
-        let buf = ::TripleBuffer::new(42);
-
-        // Check that the input and output point to the same shared state
-        assert_eq!(as_ptr(&buf.input.shared), as_ptr(&buf.output.shared));
-
-        // Access the shared state and decode back-buffer information
-        let ref buf_shared = *buf.input.shared;
-        let back_info = buf_shared.back_info.load(Ordering::Relaxed);
-        let back_idx = back_info & ::BACK_INDEX_MASK;
-        let back_buffer_clean = back_info & ::BACK_DIRTY_BIT == 0;
-
-        // Input-/output-/back-buffer indexes must be in range
-        assert!(index_in_range(buf.input.input_idx));
-        assert!(index_in_range(buf.output.output_idx));
-        assert!(index_in_range(back_idx));
-
-        // Input-/output-/back-buffer indexes must be distinct
-        assert!(buf.input.input_idx != buf.output.output_idx);
-        assert!(buf.input.input_idx != back_idx);
-        assert!(buf.output.output_idx != back_idx);
-
-        // Output buffer must be properly initialized
-        let output_ptr = buf_shared.buffers[buf.output.output_idx].get();
-        assert_eq!(unsafe { *output_ptr }, 42);
-
-        // Back-buffer must be initially clean
-        assert!(back_buffer_clean);
+        let mut buf = ::TripleBuffer::new(42);
+        check_buf_state(&mut buf, false);
+        assert_eq!(*buf.output.read(), 42);
     }
 
     /// Check that the shared state's unsafe equality operator works
@@ -713,8 +690,39 @@ mod tests {
         assert_eq!(buf.output.output_idx, 0b00);
     }
 
-    // TODO: Check that queries work well (and don't mutate the object)
-    // TODO: Check that publish/update work in isolation
+    /// Check that manual publish/update works
+    #[test]
+    fn swaps() {
+        // Create a new buffer, and a way to track any changes to it
+        let mut buf = ::TripleBuffer::new([123, 456]);
+        let old_buf = buf.clone();
+        let old_input_idx = old_buf.input.input_idx;
+        let old_shared = &old_buf.input.shared;
+        let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
+        let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
+        let old_output_idx = old_buf.output.output_idx;
+
+        // Check that publishing works
+        buf.input.publish();
+        let mut expected_buf = old_buf.clone();
+        expected_buf.input.input_idx = old_back_idx;
+        expected_buf.input.shared.back_info.store(
+            old_input_idx | ::BACK_DIRTY_BIT,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, true);
+
+        // Check that updating works
+        buf.output.update();
+        expected_buf.output.output_idx = old_input_idx;
+        expected_buf.output.shared.back_info.store(
+            old_output_idx,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, false);
+    }
 
     /// Check that (sequentially) writing to a triple buffer works
     #[test]
@@ -908,6 +916,53 @@ mod tests {
     /// Get a pointer to the target of some reference (e.g. an &, an Arc...)
     fn as_ptr<P: Deref>(ref_like: &P) -> *const P::Target {
         &(**ref_like) as *const _
+    }
+
+    /// Check the state of a buffer, and the effect of queries on it
+    fn check_buf_state<T>(buf: &mut ::TripleBuffer<T>, expected_dirty_bit: bool)
+        where T: Clone + Debug + PartialEq + Send
+    {
+        // Make a backup of the buffer's initial state
+        let initial_buf = buf.clone();
+
+        // Check that the input and output point to the same shared state
+        assert_eq!(as_ptr(&buf.input.shared), as_ptr(&buf.output.shared));
+
+        // Access the shared state and decode back-buffer information
+        let back_info = buf.input.shared.back_info.load(Ordering::Relaxed);
+        let back_idx = back_info & ::BACK_INDEX_MASK;
+        let back_buffer_dirty = back_info & ::BACK_DIRTY_BIT != 0;
+
+        // Input-/output-/back-buffer indexes must be in range
+        assert!(index_in_range(buf.input.input_idx));
+        assert!(index_in_range(buf.output.output_idx));
+        assert!(index_in_range(back_idx));
+
+        // Input-/output-/back-buffer indexes must be distinct
+        assert!(buf.input.input_idx != buf.output.output_idx);
+        assert!(buf.input.input_idx != back_idx);
+        assert!(buf.output.output_idx != back_idx);
+
+        // Back-buffer must have the expected dirty bit
+        assert_eq!(back_buffer_dirty, expected_dirty_bit);
+
+        // Check that the "input buffer" query behaves as expected
+        assert_eq!(as_ptr(&buf.input.input_buffer()),
+                   buf.input.shared.buffers[buf.input.input_idx].get());
+        assert_eq!(*buf, initial_buf);
+
+        // Check that the "consumed" query behaves as expected
+        assert_eq!(!buf.input.consumed(), expected_dirty_bit);
+        assert_eq!(*buf, initial_buf);
+
+        // Check that the output_buffer query works in the initial state
+        assert_eq!(as_ptr(&buf.output.output_buffer()),
+                   buf.output.shared.buffers[buf.output.output_idx].get());
+        assert_eq!(*buf, initial_buf);
+
+        // Check that the output buffer query works in the initial state
+        assert_eq!(buf.output.updated(), expected_dirty_bit);
+        assert_eq!(*buf, initial_buf);
     }
 }
 
