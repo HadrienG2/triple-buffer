@@ -693,9 +693,10 @@ mod tests {
         // Now clone it
         let buf_clone = buf.clone();
 
-        // Check that the clone uses separate shared data storage
-        assert!(as_ptr(&buf.input.shared) != as_ptr(&buf_clone.input.shared));
-        assert!(as_ptr(&buf.output.shared) != as_ptr(&buf_clone.output.shared));
+        // Check that the clone uses its own, separate shared data storage
+        assert_eq!(as_ptr(&buf_clone.output.shared),
+                   as_ptr(&buf_clone.output.shared));
+        assert!(as_ptr(&buf_clone.input.shared) != as_ptr(&buf.input.shared));
 
         // Check that it is identical from PartialEq's point of view
         assert_eq!(buf, buf_clone);
