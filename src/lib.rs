@@ -8,13 +8,17 @@
 //!
 //! # Examples
 //!
+//! For many use cases, you can use the default interface, designed for maximal
+//! ergonomics and synchronization performance, which is based on moving values
+//! into the buffer and subsequently accessing them via shared references:
+//!
 //! ```
-//! // Create a triple buffer:
+//! // Create a triple buffer
 //! use triple_buffer::TripleBuffer;
 //! let buf = TripleBuffer::new(0);
 //!
 //! // Split it into an input and output interface, to be respectively sent to
-//! // the producer thread and the consumer thread:
+//! // the producer thread and the consumer thread
 //! let (mut buf_input, mut buf_output) = buf.split();
 //!
 //! // The producer can move a value into the buffer at any time
@@ -23,6 +27,63 @@
 //! // The consumer can access the latest value from the producer at any time
 //! let latest_value_ref = buf_output.read();
 //! assert_eq!(*latest_value_ref, 42);
+//! ```
+//!
+//! In situations where moving the original value away and being unable to
+//! modify it after the fact is too costly, such as if creating a new value
+//! involves dynamic memory allocation, you can opt into the lower-level "raw"
+//! interface, which allows you to access the buffer's data in place and
+//! precisely control when updates are propagated.
+//!
+//! This data access method is more error-prone and comes at a small performance
+//! cost, which is why you will need to enable it explicitly using the "raw"
+//! [cargo feature](http://doc.crates.io/manifest.html#usage-in-end-products).
+//!
+//! ```rust
+//! # #[cfg(raw)]
+//! # fn test_impl() {
+//! #
+//! // Create and split a triple buffer
+//! use triple_buffer::TripleBuffer;
+//! let buf = TripleBuffer::new(String::with_capacity(42));
+//! let (mut buf_input, mut buf_output) = buf.split();
+//!
+//! // Mutate the input buffer in place
+//! {
+//!     // Acquire a reference to the input buffer
+//!     let raw_input = buf_input.raw_input_buffer();
+//!
+//!     // In general, you don't know what's inside of the buffer, so you should
+//!     // always reset the value before use (this is a type-specific process).
+//!     raw_input.clear();
+//!
+//!     // Perform an in-place update
+//!     raw_input.push_str("Hello, ");
+//! }
+//!
+//! // Publish the input buffer update
+//! buf_input.raw_publish();
+//!
+//! // Manually fetch the buffer update from the consumer interface
+//! buf_output.raw_update();
+//!
+//! // Acquire a mutable reference to the output buffer
+//! let raw_output = buf_output.raw_output_buffer();
+//!
+//! // Post-process the output value before use
+//! raw_output.push_str("world!");
+//! #
+//! # }
+//! #
+//! # #[cfg(not(raw))]
+//! # #[deprecated]
+//! # fn test_impl() {
+//! #     // If you see a warning here, it means that this example was compiled
+//! #     // without the required "raw" feature. We cannot make this a hard
+//! #     // error yet because current Cargo does not allow adding that feature.
+//! # }
+//! #
+//! # test_impl()
 //! ```
 
 #![deny(missing_docs)]
@@ -37,8 +98,9 @@ use std::sync::Arc;
 /// A triple buffer, useful for nonblocking and thread-safe data sharing
 ///
 /// A triple buffer is a single-producer single-consumer nonblocking
-/// communication channel which behaves like a shared variable: writer submits
-/// regular updates, reader accesses latest available value at any time.
+/// communication channel which behaves like a shared variable: the producer
+/// submits regular updates, and the consumer accesses the latest available
+/// value whenever it feels like it.
 ///
 /// The input and output fields of this struct are what producers and consumers
 /// actually use in practice. They can safely be moved away from the
@@ -83,11 +145,11 @@ impl<T: Send> TripleBuffer<T> {
         TripleBuffer {
             input: Input {
                 shared: shared_state.clone(),
-                write_idx: 1,
+                input_idx: 1,
             },
             output: Output {
                 shared: shared_state,
-                read_idx: 2,
+                output_idx: 2,
             },
         }
     }
@@ -110,11 +172,11 @@ impl<T: Clone + Send> Clone for TripleBuffer<T> {
         TripleBuffer {
             input: Input {
                 shared: shared_state.clone(),
-                write_idx: self.input.write_idx,
+                input_idx: self.input.input_idx,
             },
             output: Output {
                 shared: shared_state,
-                read_idx: self.output.read_idx,
+                output_idx: self.output.output_idx,
             },
         }
     }
@@ -129,8 +191,8 @@ impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
 
         // Compare the rest of the triple buffer states
         shared_states_equal &&
-        (self.input.write_idx == other.input.write_idx) &&
-        (self.output.read_idx == other.output.read_idx)
+        (self.input.input_idx == other.input.input_idx) &&
+        (self.output.output_idx == other.output.output_idx)
     }
 }
 
@@ -147,35 +209,109 @@ pub struct Input<T: Send> {
     /// Reference-counted shared state
     shared: Arc<SharedState<T>>,
 
-    /// Index of the write buffer (which is private to the producer)
-    write_idx: BufferIndex,
+    /// Index of the input buffer (which is private to the producer)
+    input_idx: BufferIndex,
 }
 //
+// Public interface
 impl<T: Send> Input<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
-        // Access the shared state
-        let ref shared_state = *self.shared;
+        // Update the input buffer
+        *self.input_buffer() = value;
 
-        // Determine which shared buffer is the write buffer
-        let active_idx = self.write_idx;
+        // Publish our update to the consumer
+        self.publish();
+    }
 
-        // Move the input value into the (exclusive-access) write buffer.
-        let write_ptr = shared_state.buffers[active_idx].get();
-        unsafe {
-            *write_ptr = value;
+    /// Check if the consumer has fetched our last submission yet
+    ///
+    /// This method is only intended for diagnostics purposes. Please do not let
+    /// it inform your decision of sending or not sending a value, as that would
+    /// effectively be building a very poor spinlock-based double buffer
+    /// implementation. If what you truly need is a double buffer, build
+    /// yourself a proper blocking one instead of wasting CPU time.
+    ///
+    pub fn consumed(&self) -> bool {
+        let back_info = self.shared.back_info.load(Ordering::Relaxed);
+        back_info & BACK_DIRTY_BIT == 0
+    }
+
+    /// Get raw access to the input buffer
+    ///
+    /// This advanced interface allows you to update the input buffer in place,
+    /// which can in some case improve performance by avoiding to create values
+    /// of type T repeatedy when this is an expensive process.
+    ///
+    /// However, by opting into it, you force yourself to take into account
+    /// subtle implementation details which you could normally ignore.
+    ///
+    /// First, the buffer does not contain the last value that you sent (which
+    /// is now into the hands of the consumer). In fact, the consumer is allowed
+    /// to write complete garbage into it if it feels so inclined. All you can
+    /// safely assume is that it contains a valid value of type T.
+    ///
+    /// Second, we do not send updates automatically. You need to call
+    /// raw_publish() in order to propagate a buffer update to the consumer.
+    /// Alternative designs based on Drop were considered, but ultimately deemed
+    /// too magical for the target audience of this method.
+    ///
+    #[cfg(raw)]
+    pub fn raw_input_buffer(&mut self) -> &mut T {
+        self.input_buffer()
+    }
+
+    /// Unconditionally publish an update, checking for overwrites
+    ///
+    /// After updating the input buffer using raw_input_buffer(), you can use
+    /// this method to publish your updates to the consumer. It will send back
+    /// an output flag which tells you whether an unread value was overwritten.
+    ///
+    #[cfg(raw)]
+    pub fn raw_publish(&mut self) -> bool {
+        self.publish()
+    }
+}
+//
+// Internal interface
+impl<T: Send> Input<T> {
+    /// Access the input buffer
+    ///
+    /// This is safe because the synchronization protocol ensures that we have
+    /// exclusive access to this buffer.
+    ///
+    fn input_buffer(&mut self) -> &mut T {
+        let input_ptr = self.shared.buffers[self.input_idx].get();
+        unsafe { &mut *input_ptr }
+    }
+
+    /// Tell which memory ordering should be used for buffer swaps
+    ///
+    /// The right answer depends on whether the consumer is allowed to write
+    /// into the output buffer or not. If it can, then we must synchronize with
+    /// its writes. If not, we only need to propagate our own writes.
+    ///
+    fn swap_ordering() -> Ordering {
+        if cfg!(raw) {
+            Ordering::AcqRel
+        } else {
+            Ordering::Release
         }
+    }
 
-        // Publish our write buffer as the new back-buffer, setting the dirty
-        // bit to tell the consumer that new data is available in there.
-        let former_back_info = shared_state.back_info.swap(
-            active_idx | BACK_DIRTY_BIT,
-            Ordering::Release  // Publish buffer updates to the reader
+    /// Publish an update, checking for overwrites (internal version)
+    fn publish(&mut self) -> bool {
+        // Swap the input buffer and the back buffer, setting the dirty bit
+        let former_back_info = self.shared.back_info.swap(
+            self.input_idx | BACK_DIRTY_BIT,
+            Self::swap_ordering()  // Propagate buffer updates as well
         );
 
-        // The previous back-buffer, which is not reader-visible anymore, will
-        // become our new write buffer. Extract its index from the old info.
-        self.write_idx = former_back_info & BACK_INDEX_MASK
+        // The old back buffer becomes our new input buffer
+        self.input_idx = former_back_info & BACK_INDEX_MASK;
+
+        // Tell whether we have overwritten unread data
+        former_back_info & BACK_DIRTY_BIT != 0
     }
 }
 
@@ -192,42 +328,127 @@ pub struct Output<T: Send> {
     /// Reference-counted shared state
     shared: Arc<SharedState<T>>,
 
-    /// Index of the read buffer (which is private to the consumer)
-    read_idx: BufferIndex,
+    /// Index of the output buffer (which is private to the consumer)
+    output_idx: BufferIndex,
 }
 //
+// Public interface
 impl<T: Send> Output<T> {
     /// Access the latest value from the triple buffer
     pub fn read(&mut self) -> &T {
+        // Fetch updates from the producer
+        self.update();
+
+        // Give access to the output buffer
+        self.output_buffer()
+    }
+
+    /// Tell whether a buffer update is incoming from the producer
+    ///
+    /// This method is only intended for diagnostics purposes. Please do not let
+    /// it inform your decision of reading a value or not, as that would
+    /// effectively be building a very poor spinlock-based double buffer
+    /// implementation. If what you truly need is a double buffer, build
+    /// yourself a proper blocking one instead of wasting CPU time.
+    ///
+    pub fn updated(&self) -> bool {
+        let back_info = self.shared.back_info.load(Ordering::Relaxed);
+        back_info & BACK_DIRTY_BIT != 0
+    }
+
+    /// Get raw access to the output buffer
+    ///
+    /// This advanced interface allows you to modify the contents of the output
+    /// buffer, which can in some case improve performance by avoiding to create
+    /// values of type T when this is an expensive process. One possible
+    /// application, for example, is to post-process values from the producer.
+    ///
+    /// However, by opting into it, you force yourself to take into account
+    /// subtle implementation details which you could normally ignore.
+    ///
+    /// First, keep in mind that you can lose access to the current output
+    /// buffer any time read() or raw_update() is called, as it will be replaced
+    /// by an updated buffer from the producer automatically.
+    ///
+    /// Second, to reduce the potential for the aforementioned usage error, this
+    /// method does not update the output buffer automatically. You need to call
+    /// raw_update() in order to fetch buffer updates from the producer.
+    ///
+    #[cfg(raw)]
+    pub fn raw_output_buffer(&mut self) -> &mut T {
+        self.output_buffer()
+    }
+
+    /// Update the output buffer
+    ///
+    /// Check for incoming updates from the producer, and if so, update our
+    /// output buffer to the latest data version. This operation will overwrite
+    /// any changes which you may have commited into the output buffer.
+    ///
+    /// Return a flag telling whether an update was carried out
+    ///
+    #[cfg(raw)]
+    pub fn raw_update(&mut self) -> bool {
+        self.update()
+    }
+}
+//
+// Internal interface
+impl<T: Send> Output<T> {
+    /// Access the output buffer (internal version)
+    ///
+    /// This is safe because the synchronization protocol ensures that we have
+    /// exclusive access to this buffer.
+    ///
+    fn output_buffer(&mut self) -> &mut T {
+        let output_ptr = self.shared.buffers[self.output_idx].get();
+        unsafe { &mut *output_ptr }
+    }
+
+    /// Tell which memory ordering should be used for buffer swaps
+    ///
+    /// The right answer depends on whether the client is allowed to write into
+    /// the output buffer or not. If it can, then we must propagate these writes
+    /// back to the producer. Otherwise, we only need to fetch producer updates.
+    ///
+    fn swap_ordering() -> Ordering {
+        if cfg!(raw) {
+            Ordering::AcqRel
+        } else {
+            Ordering::Acquire
+        }
+    }
+
+    /// Check out incoming output buffer updates (internal version)
+    fn update(&mut self) -> bool {
         // Access the shared state
         let ref shared_state = *self.shared;
 
         // Check if an update is present in the back-buffer
-        let initial_back_info = shared_state.back_info.load(Ordering::Relaxed);
-        if initial_back_info & BACK_DIRTY_BIT != 0 {
-            // If so, exchange our read buffer with the back-buffer, thusly
+        let updated = self.updated();
+        if updated {
+            // If so, exchange our output buffer with the back-buffer, thusly
             // acquiring exclusive access to the old back buffer while giving
             // the producer a new back-buffer to write to.
             let former_back_info = shared_state.back_info.swap(
-                self.read_idx,
-                Ordering::Acquire  // Synchronize with buffer updates
+                self.output_idx,
+                Self::swap_ordering()  // Synchronize with buffer updates
             );
 
-            // Extract the old back-buffer index as our new read buffer index
-            self.read_idx = former_back_info & BACK_INDEX_MASK;
+            // Make the old back-buffer our new output buffer
+            self.output_idx = former_back_info & BACK_INDEX_MASK;
         }
 
-        // Access data from the current (exclusive-access) read buffer
-        let read_ptr = shared_state.buffers[self.read_idx].get();
-        unsafe { &*read_ptr }
+        // Tell whether an update was carried out
+        updated
     }
 }
 
 
 /// Triple buffer shared state
 ///
-/// In a triple buffering communication protocol, the reader and writer share
-/// the following storage:
+/// In a triple buffering communication protocol, the producer and consumer
+/// share the following storage:
 ///
 /// - Three memory buffers suitable for storing the data at hand
 /// - Information about the back-buffer: which buffer is the current back-buffer
@@ -289,7 +510,7 @@ unsafe impl<T: Send> Sync for SharedState<T> {}
 /// These types are used to index into triple buffers. In addition, the
 /// BackBufferInfo type is actually a bitfield, whose third bit (numerical
 /// value: 4) is set to 1 to indicate that the producer published an update into
-/// the back-buffer, and reset to 0 when the reader fetches the update.
+/// the back-buffer, and reset to 0 when the consumer fetches the update.
 ///
 /// TODO: Switch to i8 / AtomicI8 once the later is stable
 ///
@@ -303,7 +524,10 @@ const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 /// Unit tests
 #[cfg(test)]
 mod tests {
+    use std::cell::UnsafeCell;
+    use std::fmt::Debug;
     use std::sync::atomic::Ordering;
+    use std::ops::Deref;
     use std::thread;
     use std::time::Duration;
     use testbench;
@@ -313,30 +537,174 @@ mod tests {
     #[test]
     fn initial_state() {
         // Let's create a triple buffer
-        let buf = ::TripleBuffer::new(42);
+        let mut buf = ::TripleBuffer::new(42);
+        check_buf_state(&mut buf, false);
+        assert_eq!(*buf.output.read(), 42);
+    }
 
-        // Access the shared state and decode back-buffer information
-        let ref buf_shared = *buf.input.shared;
-        let back_info = buf_shared.back_info.load(Ordering::Relaxed);
-        let back_idx = back_info & ::BACK_INDEX_MASK;
-        let back_buffer_clean = back_info & ::BACK_DIRTY_BIT == 0;
+    /// Check that the shared state's unsafe equality operator works
+    #[test]
+    fn partial_eq_shared() {
+        // Let's create some dummy shared state
+        let dummy_state = ::SharedState::<u16> {
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        };
 
-        // Write-/read-/back-buffer indexes must be in range
-        assert!(index_in_range(buf.input.write_idx));
-        assert!(index_in_range(buf.output.read_idx));
-        assert!(index_in_range(back_idx));
+        // Check that the dummy state is equal to itself
+        assert!(unsafe { dummy_state.eq(&dummy_state) });
 
-        // Write-/read-/back-buffer indexes must be distinct
-        assert!(buf.input.write_idx != buf.output.read_idx);
-        assert!(buf.input.write_idx != back_idx);
-        assert!(buf.output.read_idx != back_idx);
+        // Check that it's not equal to a state where buffer contents differ
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [UnsafeCell::new(114),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        })});
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(225),
+                      UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        })});
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(336)],
+            back_info: ::AtomicBackBufferInfo::new(0b10),
+        })});
 
-        // Read buffer must be properly initialized
-        let read_ptr = buf_shared.buffers[buf.output.read_idx].get();
-        assert_eq!(unsafe { *read_ptr }, 42);
+        // Check that it's not equal to a state where the back info differs
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b10),
+        })});
+        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+            buffers: [UnsafeCell::new(111),
+                      UnsafeCell::new(222),
+                      UnsafeCell::new(333)],
+            back_info: ::AtomicBackBufferInfo::new(0b01),
+        })});
+    }
 
-        // Back-buffer must be initially clean
-        assert!(back_buffer_clean);
+    /// Check that TripleBuffer's PartialEq impl works
+    #[test]
+    fn partial_eq() {
+        // Create a triple buffer
+        let buf = ::TripleBuffer::new("test");
+
+        // Check that it is equal to itself
+        assert_eq!(buf, buf);
+
+        // Make another buffer with different contents. As buffer creation is
+        // deterministic, this should only have an impact on the shared state,
+        // but the buffers should nevertheless be considered different.
+        let buf2 = ::TripleBuffer::new("taste");
+        assert_eq!(buf.input.input_idx, buf2.input.input_idx);
+        assert_eq!(buf.output.output_idx, buf2.output.output_idx);
+        assert!(buf != buf2);
+
+        // Check that changing either the input or output buffer index will
+        // also lead two TripleBuffers to be considered different (this test
+        // technically creates an invalid TripleBuffer state, but it's the only
+        // way to check that the PartialEq impl is exhaustive)
+        let mut buf3 = ::TripleBuffer::new("test");
+        assert_eq!(buf, buf3);
+        let old_input_idx = buf3.input.input_idx;
+        buf3.input.input_idx = buf3.output.output_idx;
+        assert!(buf != buf3);
+        buf3.input.input_idx = old_input_idx;
+        buf3.output.output_idx = old_input_idx;
+        assert!(buf != buf3);
+    }
+
+    /// Check that the shared state's unsafe clone operator works
+    #[test]
+    fn clone_shared() {
+        // Let's create some dummy shared state
+        let dummy_state = ::SharedState::<u8> {
+            buffers: [UnsafeCell::new(123),
+                      UnsafeCell::new(231),
+                      UnsafeCell::new(132)],
+            back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b01),
+        };
+
+        // Now, try to clone it
+        let dummy_state_copy = unsafe { dummy_state.clone() };
+
+        // Check that the contents of the original state did not change
+        assert!(unsafe { dummy_state.eq(&::SharedState::<u8> {
+            buffers: [UnsafeCell::new(123),
+                      UnsafeCell::new(231),
+                      UnsafeCell::new(132)],
+            back_info: ::AtomicBackBufferInfo::new(
+                ::BACK_DIRTY_BIT & 0b01
+            ),
+        })});
+
+        // Check that the contents of the original and final state are identical
+        assert!(unsafe { dummy_state.eq(&dummy_state_copy) });
+    }
+
+    /// Check that TripleBuffer's Clone impl works
+    #[test]
+    fn clone() {
+        // Create a triple buffer
+        let mut buf = ::TripleBuffer::new(4.2);
+
+        // Put it in a nontrivial state
+        unsafe {
+            *buf.input.shared.buffers[0].get() = 1.2;
+            *buf.input.shared.buffers[1].get() = 3.4;
+            *buf.input.shared.buffers[2].get() = 5.6;
+        }
+        buf.input.shared.back_info.store(::BACK_DIRTY_BIT & 0b01,
+                                         Ordering::Relaxed);
+        buf.input.input_idx = 0b10;
+        buf.output.output_idx = 0b00;
+
+        // Now clone it
+        let buf_clone = buf.clone();
+
+        // Check that the clone uses its own, separate shared data storage
+        assert_eq!(as_ptr(&buf_clone.output.shared),
+                   as_ptr(&buf_clone.output.shared));
+        assert!(as_ptr(&buf_clone.input.shared) != as_ptr(&buf.input.shared));
+
+        // Check that it is identical from PartialEq's point of view
+        assert_eq!(buf, buf_clone);
+
+        // Check that the contents of the original buffer did not change
+        unsafe {
+            assert_eq!(*buf.input.shared.buffers[0].get(), 1.2);
+            assert_eq!(*buf.input.shared.buffers[1].get(), 3.4);
+            assert_eq!(*buf.input.shared.buffers[2].get(), 5.6);
+        }
+        assert_eq!(buf.input.shared.back_info.load(Ordering::Relaxed),
+                   ::BACK_DIRTY_BIT & 0b01);
+        assert_eq!(buf.input.input_idx, 0b10);
+        assert_eq!(buf.output.output_idx, 0b00);
+    }
+
+    /// Check that the low-level publish/update primitives work
+    #[test]
+    fn swaps_impl() {
+        check_buf_swaps([123u16, 456u16],
+                        |input| input.publish(),
+                        |output| output.update());
+    }
+
+    /// If they are exposed, check that the public versions work as well
+    #[test]
+    #[cfg(raw)]
+    fn swaps() {
+        check_buf_swaps([123u16, 456u16],
+                        |input| input.raw_publish(),
+                        |output| output.raw_update());
     }
 
     /// Check that (sequentially) writing to a triple buffer works
@@ -347,7 +715,6 @@ mod tests {
 
         // Back up the initial buffer state
         let old_buf = buf.clone();
-        let ref old_shared = old_buf.input.shared;
 
         // Perform a write
         buf.input.write(true);
@@ -356,28 +723,14 @@ mod tests {
         {
             // Starting from the old buffer state...
             let mut expected_buf = old_buf.clone();
-            let ref expected_shared = expected_buf.input.shared;
 
-            // We expect the former write buffer to have received the new value
-            let old_write_idx = old_buf.input.write_idx;
-            let write_ptr = expected_shared.buffers[old_write_idx].get();
-            unsafe {
-                *write_ptr = true;
-            }
-
-            // We expect the former write buffer to become the new back buffer
-            // and the back buffer's dirty bit to be set
-            expected_shared.back_info
-                .store(old_write_idx | ::BACK_DIRTY_BIT,
-                       Ordering::Relaxed);
-
-            // We expect the old back buffer to become the new write buffer
-            let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-            let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
-            expected_buf.input.write_idx = old_back_idx;
+            // ...write the new value in and swap...
+            *expected_buf.input.input_buffer() = true;
+            expected_buf.input.publish();
 
             // Nothing else should have changed
             assert_eq!(buf, expected_buf);
+            check_buf_state(&mut buf, true);
         }
     }
 
@@ -392,7 +745,6 @@ mod tests {
         {
             // Back up the initial buffer state
             let old_buf = buf.clone();
-            let ref old_shared = old_buf.input.shared;
 
             // Read from the buffer
             let result = *buf.output.read();
@@ -400,22 +752,11 @@ mod tests {
             // Output value should be correct
             assert_eq!(result, 4.2);
 
-            // Starting from the old buffer state...
+            // Result should be equivalent to carrying out an update
             let mut expected_buf = old_buf.clone();
-            let ref expected_shared = expected_buf.input.shared;
-
-            // We expect the new back index to point to the former read buffer
-            // and the back buffer's dirty bit to be unset.
-            expected_shared.back_info.store(old_buf.output.read_idx,
-                                            Ordering::Relaxed);
-
-            // We expect the new read index to point to the former back buffer
-            let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-            let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
-            expected_buf.output.read_idx = old_back_idx;
-
-            // Nothing else should have changed
+            assert!(expected_buf.output.update());
             assert_eq!(buf, expected_buf);
+            check_buf_state(&mut buf, false);
         }
 
         // Test readout from clean (unchanged) triple buffer
@@ -431,18 +772,11 @@ mod tests {
 
             // Buffer state should be unchanged
             assert_eq!(buf, old_buf);
+            check_buf_state(&mut buf, false);
         }
     }
 
     /// Check that contended concurrent reads and writes work
-    ///
-    /// **WARNING:** This test unfortunately needs to have timing-dependent
-    /// behaviour to do its job. If it fails for you, try the following:
-    ///
-    /// - Close running applications in the background
-    /// - Re-run the tests with only one OS thread (--test-threads=1)
-    /// - Increase the writer sleep period
-    ///
     #[test]
     #[ignore]
     fn contended_concurrent_access() {
@@ -483,7 +817,12 @@ mod tests {
 
     /// Check that uncontended concurrent reads and writes work
     ///
-    /// **WARNING:** Caveats of contented concurrent access also apply here
+    /// **WARNING:** This test unfortunately needs to have timing-dependent
+    /// behaviour to do its job. If it fails for you, try the following:
+    ///
+    /// - Close running applications in the background
+    /// - Re-run the tests with only one OS thread (--test-threads=1)
+    /// - Increase the writer sleep period
     ///
     #[test]
     #[ignore]
@@ -529,6 +868,113 @@ mod tests {
     #[allow(unused_comparisons)]
     fn index_in_range(idx: ::BufferIndex) -> bool {
         (idx >= 0) & (idx <= 2)
+    }
+
+    /// Get a pointer to the target of some reference (e.g. an &, an Arc...)
+    fn as_ptr<P: Deref>(ref_like: &P) -> *const P::Target {
+        &(**ref_like) as *const _
+    }
+
+    /// Check the state of a buffer, and the effect of queries on it
+    fn check_buf_state<T>(buf: &mut ::TripleBuffer<T>, expected_dirty_bit: bool)
+        where T: Clone + Debug + PartialEq + Send
+    {
+        // Make a backup of the buffer's initial state
+        let initial_buf = buf.clone();
+
+        // Check that the input and output point to the same shared state
+        assert_eq!(as_ptr(&buf.input.shared), as_ptr(&buf.output.shared));
+
+        // Access the shared state and decode back-buffer information
+        let back_info = buf.input.shared.back_info.load(Ordering::Relaxed);
+        let back_idx = back_info & ::BACK_INDEX_MASK;
+        let back_buffer_dirty = back_info & ::BACK_DIRTY_BIT != 0;
+
+        // Input-/output-/back-buffer indexes must be in range
+        assert!(index_in_range(buf.input.input_idx));
+        assert!(index_in_range(buf.output.output_idx));
+        assert!(index_in_range(back_idx));
+
+        // Input-/output-/back-buffer indexes must be distinct
+        assert!(buf.input.input_idx != buf.output.output_idx);
+        assert!(buf.input.input_idx != back_idx);
+        assert!(buf.output.output_idx != back_idx);
+
+        // Back-buffer must have the expected dirty bit
+        assert_eq!(back_buffer_dirty, expected_dirty_bit);
+
+        // Check that the "input buffer" query behaves as expected
+        assert_eq!(as_ptr(&buf.input.input_buffer()),
+                   buf.input.shared.buffers[buf.input.input_idx].get());
+        assert_eq!(*buf, initial_buf);
+
+        // Check that the "consumed" query behaves as expected
+        assert_eq!(!buf.input.consumed(), expected_dirty_bit);
+        assert_eq!(*buf, initial_buf);
+
+        // Check that the output_buffer query works in the initial state
+        assert_eq!(as_ptr(&buf.output.output_buffer()),
+                   buf.output.shared.buffers[buf.output.output_idx].get());
+        assert_eq!(*buf, initial_buf);
+
+        // Check that the output buffer query works in the initial state
+        assert_eq!(buf.output.updated(), expected_dirty_bit);
+        assert_eq!(*buf, initial_buf);
+    }
+
+    /// Check buffer swaps, via either the private or public interface
+    fn check_buf_swaps<T, P, U>(initial_value: T,
+                                mut publish_impl: P,
+                                mut update_impl: U)
+        where T: Clone + Debug + PartialEq + Send,
+              P: FnMut(&mut ::Input<T>) -> bool,
+              U: FnMut(&mut ::Output<T>) -> bool
+    {
+        // Create a new buffer, and a way to track any changes to it
+        let mut buf = ::TripleBuffer::<T>::new(initial_value);
+        let old_buf = buf.clone();
+        let old_input_idx = old_buf.input.input_idx;
+        let old_shared = &old_buf.input.shared;
+        let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
+        let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
+        let old_output_idx = old_buf.output.output_idx;
+
+        // Check that updating from a clean state works
+        assert!(!update_impl(&mut buf.output));
+        assert_eq!(buf, old_buf);
+        check_buf_state(&mut buf, false);
+
+        // Check that publishing from a clean state works
+        assert!(!publish_impl(&mut buf.input));
+        let mut expected_buf = old_buf.clone();
+        expected_buf.input.input_idx = old_back_idx;
+        expected_buf.input.shared.back_info.store(
+            old_input_idx | ::BACK_DIRTY_BIT,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, true);
+
+        // Check that overwriting a dirty state works
+        assert!(publish_impl(&mut buf.input));
+        let mut expected_buf = old_buf.clone();
+        expected_buf.input.input_idx = old_input_idx;
+        expected_buf.input.shared.back_info.store(
+            old_back_idx | ::BACK_DIRTY_BIT,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, true);
+
+        // Check that updating from a dirty state works
+        assert!(update_impl(&mut buf.output));
+        expected_buf.output.output_idx = old_back_idx;
+        expected_buf.output.shared.back_info.store(
+            old_output_idx,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, false);
     }
 }
 
