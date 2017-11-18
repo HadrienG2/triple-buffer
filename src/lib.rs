@@ -690,38 +690,21 @@ mod tests {
         assert_eq!(buf.output.output_idx, 0b00);
     }
 
-    /// Check that manual publish/update works
+    /// Check that the low-level publish/update primitives work
     #[test]
+    fn swaps_impl() {
+        check_buf_swaps([123u16, 456u16],
+                        |input| input.publish(),
+                        |output| output.update());
+    }
+
+    /// If they are exposed, check that the public versions work as well
+    #[test]
+    #[cfg(raw)]
     fn swaps() {
-        // Create a new buffer, and a way to track any changes to it
-        let mut buf = ::TripleBuffer::new([123, 456]);
-        let old_buf = buf.clone();
-        let old_input_idx = old_buf.input.input_idx;
-        let old_shared = &old_buf.input.shared;
-        let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-        let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
-        let old_output_idx = old_buf.output.output_idx;
-
-        // Check that publishing works
-        buf.input.publish();
-        let mut expected_buf = old_buf.clone();
-        expected_buf.input.input_idx = old_back_idx;
-        expected_buf.input.shared.back_info.store(
-            old_input_idx | ::BACK_DIRTY_BIT,
-            Ordering::Relaxed
-        );
-        assert_eq!(buf, expected_buf);
-        check_buf_state(&mut buf, true);
-
-        // Check that updating works
-        buf.output.update();
-        expected_buf.output.output_idx = old_input_idx;
-        expected_buf.output.shared.back_info.store(
-            old_output_idx,
-            Ordering::Relaxed
-        );
-        assert_eq!(buf, expected_buf);
-        check_buf_state(&mut buf, false);
+        check_buf_swaps([123u16, 456u16],
+                        |input| input.raw_publish(),
+                        |output| output.raw_update());
     }
 
     /// Check that (sequentially) writing to a triple buffer works
@@ -732,7 +715,6 @@ mod tests {
 
         // Back up the initial buffer state
         let old_buf = buf.clone();
-        let ref old_shared = old_buf.input.shared;
 
         // Perform a write
         buf.input.write(true);
@@ -741,28 +723,14 @@ mod tests {
         {
             // Starting from the old buffer state...
             let mut expected_buf = old_buf.clone();
-            let ref expected_shared = expected_buf.input.shared;
 
-            // We expect the former input buffer to have received the new value
-            let old_input_idx = old_buf.input.input_idx;
-            let input_ptr = expected_shared.buffers[old_input_idx].get();
-            unsafe {
-                *input_ptr = true;
-            }
-
-            // We expect the former input buffer to become the new back buffer
-            // and the back buffer's dirty bit to be set
-            expected_shared.back_info
-                .store(old_input_idx | ::BACK_DIRTY_BIT,
-                       Ordering::Relaxed);
-
-            // We expect the old back buffer to become the new input buffer
-            let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-            let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
-            expected_buf.input.input_idx = old_back_idx;
+            // ...write the new value in and swap...
+            *expected_buf.input.input_buffer() = true;
+            expected_buf.input.publish();
 
             // Nothing else should have changed
             assert_eq!(buf, expected_buf);
+            check_buf_state(&mut buf, true);
         }
     }
 
@@ -777,7 +745,6 @@ mod tests {
         {
             // Back up the initial buffer state
             let old_buf = buf.clone();
-            let ref old_shared = old_buf.input.shared;
 
             // Read from the buffer
             let result = *buf.output.read();
@@ -785,22 +752,11 @@ mod tests {
             // Output value should be correct
             assert_eq!(result, 4.2);
 
-            // Starting from the old buffer state...
+            // Result should be equivalent to carrying out an update
             let mut expected_buf = old_buf.clone();
-            let ref expected_shared = expected_buf.input.shared;
-
-            // We expect the new back index to point to the former output buffer
-            // and the back buffer's dirty bit to be unset.
-            expected_shared.back_info.store(old_buf.output.output_idx,
-                                            Ordering::Relaxed);
-
-            // We expect the new output index to point to the former back buffer
-            let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-            let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
-            expected_buf.output.output_idx = old_back_idx;
-
-            // Nothing else should have changed
+            assert!(expected_buf.output.update());
             assert_eq!(buf, expected_buf);
+            check_buf_state(&mut buf, false);
         }
 
         // Test readout from clean (unchanged) triple buffer
@@ -816,6 +772,7 @@ mod tests {
 
             // Buffer state should be unchanged
             assert_eq!(buf, old_buf);
+            check_buf_state(&mut buf, false);
         }
     }
 
@@ -963,6 +920,61 @@ mod tests {
         // Check that the output buffer query works in the initial state
         assert_eq!(buf.output.updated(), expected_dirty_bit);
         assert_eq!(*buf, initial_buf);
+    }
+
+    /// Check buffer swaps, via either the private or public interface
+    fn check_buf_swaps<T, P, U>(initial_value: T,
+                                mut publish_impl: P,
+                                mut update_impl: U)
+        where T: Clone + Debug + PartialEq + Send,
+              P: FnMut(&mut ::Input<T>) -> bool,
+              U: FnMut(&mut ::Output<T>) -> bool
+    {
+        // Create a new buffer, and a way to track any changes to it
+        let mut buf = ::TripleBuffer::<T>::new(initial_value);
+        let old_buf = buf.clone();
+        let old_input_idx = old_buf.input.input_idx;
+        let old_shared = &old_buf.input.shared;
+        let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
+        let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
+        let old_output_idx = old_buf.output.output_idx;
+
+        // Check that updating from a clean state works
+        assert!(!update_impl(&mut buf.output));
+        assert_eq!(buf, old_buf);
+        check_buf_state(&mut buf, false);
+
+        // Check that publishing from a clean state works
+        assert!(!publish_impl(&mut buf.input));
+        let mut expected_buf = old_buf.clone();
+        expected_buf.input.input_idx = old_back_idx;
+        expected_buf.input.shared.back_info.store(
+            old_input_idx | ::BACK_DIRTY_BIT,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, true);
+
+        // Check that overwriting a dirty state works
+        assert!(publish_impl(&mut buf.input));
+        let mut expected_buf = old_buf.clone();
+        expected_buf.input.input_idx = old_input_idx;
+        expected_buf.input.shared.back_info.store(
+            old_back_idx | ::BACK_DIRTY_BIT,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, true);
+
+        // Check that updating from a dirty state works
+        assert!(update_impl(&mut buf.output));
+        expected_buf.output.output_idx = old_back_idx;
+        expected_buf.output.shared.back_info.store(
+            old_output_idx,
+            Ordering::Relaxed
+        );
+        assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, false);
     }
 }
 
