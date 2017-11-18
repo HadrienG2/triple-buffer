@@ -32,6 +32,48 @@ let latest_value_ref = buf_output.read();
 assert_eq!(*latest_value_ref, 42);
 ```
 
+In situations where moving the original value away and being unable to
+modify it after the fact is too costly, such as if creating a new value
+involves dynamic memory allocation, you can opt into the lower-level "raw"
+interface, which allows you to access the buffer's data in place and
+precisely control when updates are propagated.
+
+This data access method is more error-prone and comes at a small performance
+cost, which is why you will need to enable it explicitly using the "raw"
+[cargo feature](http://doc.crates.io/manifest.html#usage-in-end-products).
+
+```rust
+// Create and split a triple buffer
+use triple_buffer::TripleBuffer;
+let buf = TripleBuffer::new(String::with_capacity(42));
+let (mut buf_input, mut buf_output) = buf.split();
+
+// Mutate the input buffer in place
+{
+    // Acquire a reference to the input buffer
+    let raw_input = buf_input.raw_input_buffer();
+
+    // In general, you don't know what's inside of the buffer, so you should
+    // always reset the value before use (this is a type-specific process).
+    raw_input.clear();
+
+    // Perform an in-place update
+    raw_input.push_str("Hello, ");
+}
+
+// Publish the input buffer update
+buf_input.raw_publish();
+
+// Manually fetch the buffer update from the consumer interface
+buf_output.raw_update();
+
+// Acquire a mutable reference to the output buffer
+let raw_output = buf_output.raw_output_buffer();
+
+// Post-process the output value before use
+raw_output.push_str("world!");
+```
+
 
 ## Give me details! How does it compare to alternatives?
 
