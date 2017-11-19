@@ -40,7 +40,7 @@
 //! [cargo feature](http://doc.crates.io/manifest.html#usage-in-end-products).
 //!
 //! ```rust
-//! # #[cfg(raw)]
+//! # #[cfg(feature="raw")]
 //! # fn test_impl() {
 //! #
 //! // Create and split a triple buffer
@@ -75,7 +75,7 @@
 //! #
 //! # }
 //! #
-//! # #[cfg(not(raw))]
+//! # #[cfg(not(feature="raw"))]
 //! # #[deprecated]
 //! # fn test_impl() {
 //! #     // If you see a warning here, it means that this example was compiled
@@ -256,7 +256,7 @@ impl<T: Send> Input<T> {
     /// Alternative designs based on Drop were considered, but ultimately deemed
     /// too magical for the target audience of this method.
     ///
-    #[cfg(any(raw, test))]
+    #[cfg(any(feature="raw", test))]
     pub fn raw_input_buffer(&mut self) -> &mut T {
         self.input_buffer()
     }
@@ -267,7 +267,7 @@ impl<T: Send> Input<T> {
     /// this method to publish your updates to the consumer. It will send back
     /// an output flag which tells you whether an unread value was overwritten.
     ///
-    #[cfg(any(raw, test))]
+    #[cfg(any(feature="raw", test))]
     pub fn raw_publish(&mut self) -> bool {
         self.publish()
     }
@@ -292,7 +292,7 @@ impl<T: Send> Input<T> {
     /// its writes. If not, we only need to propagate our own writes.
     ///
     fn swap_ordering() -> Ordering {
-        if cfg!(raw) {
+        if cfg!(feature="raw") {
             Ordering::AcqRel
         } else {
             Ordering::Release
@@ -374,7 +374,7 @@ impl<T: Send> Output<T> {
     /// method does not update the output buffer automatically. You need to call
     /// raw_update() in order to fetch buffer updates from the producer.
     ///
-    #[cfg(any(raw, test))]
+    #[cfg(any(feature="raw", test))]
     pub fn raw_output_buffer(&mut self) -> &mut T {
         self.output_buffer()
     }
@@ -387,7 +387,7 @@ impl<T: Send> Output<T> {
     ///
     /// Return a flag telling whether an update was carried out
     ///
-    #[cfg(any(raw, test))]
+    #[cfg(any(feature="raw", test))]
     pub fn raw_update(&mut self) -> bool {
         self.update()
     }
@@ -412,7 +412,7 @@ impl<T: Send> Output<T> {
     /// back to the producer. Otherwise, we only need to fetch producer updates.
     ///
     fn swap_ordering() -> Ordering {
-        if cfg!(raw) {
+        if cfg!(feature="raw") {
             Ordering::AcqRel
         } else {
             Ordering::Acquire
@@ -812,7 +812,7 @@ mod tests {
     /// Check that contended concurrent reads and writes work
     #[test]
     #[ignore]
-    fn contended_concurrent_access() {
+    fn contended_concurrent_read_write() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
         const TEST_WRITE_COUNT: usize = 100_000_000;
@@ -859,7 +859,7 @@ mod tests {
     ///
     #[test]
     #[ignore]
-    fn uncontended_concurrent_access() {
+    fn uncontended_concurrent_read_write() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
         const TEST_WRITE_COUNT: usize = 1_250;
@@ -891,6 +891,60 @@ mod tests {
                         Racey::Inconsistent => {
                             panic!("Inconsistent state exposed by the buffer!");
                         }
+                    }
+                }
+            }
+        );
+    }
+
+    /// When raw mode is enabled, the consumer is allowed to modify its bufffer,
+    /// which means that it will unknowingly send back data to the producer.
+    /// This creates new correctness requirements for the synchronization
+    /// protocol, which must be checked as well.
+    #[test]
+    #[ignore]
+    #[cfg(feature="raw")]
+    fn concurrent_bidirectional_exchange() {
+        // We will stress the infrastructure by performing this many writes
+        // as a reader continuously reads the latest value
+        const TEST_WRITE_COUNT: usize = 100_000_000;
+
+        // This is the buffer that our reader and writer will share
+        let buf = ::TripleBuffer::new(UsizeRaceCell::new(0));
+        let (mut buf_input, mut buf_output) = buf.split();
+
+        // Concurrently run a writer which increments a shared value in a loop,
+        // and a reader which makes sure that no unexpected value slips in.
+        testbench::concurrent_test_2(
+            move || {
+                for new_value in 1..(TEST_WRITE_COUNT + 1) {
+                    match buf_input.raw_input_buffer().get() {
+                        Racey::Consistent(curr_value) => {
+                            assert!(curr_value <= TEST_WRITE_COUNT);
+                        },
+                        Racey::Inconsistent => {
+                            panic!("Inconsistent state exposed by the buffer!");
+                        }
+                    }
+                    buf_input.write(UsizeRaceCell::new(new_value));
+                }
+            },
+            move || {
+                let mut last_value = 0usize;
+                while last_value < TEST_WRITE_COUNT {
+                    match buf_output.raw_output_buffer().get() {
+                        Racey::Consistent(new_value) => {
+                            assert!((new_value >= last_value) &&
+                                    (new_value <= TEST_WRITE_COUNT));
+                            last_value = new_value;
+                        }
+                        Racey::Inconsistent => {
+                            panic!("Inconsistent state exposed by the buffer!");
+                        }
+                    }
+                    if buf_output.updated() {
+                        buf_output.raw_output_buffer().set(last_value/2);
+                        buf_output.raw_update();
                     }
                 }
             }
