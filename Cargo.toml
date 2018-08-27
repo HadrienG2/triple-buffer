@@ -22,4 +22,4 @@ travis-ci = { repository = "HadrienG2/triple-buffer", branch = "master" }
 
 [dependencies]
 crossbeam-utils = "0.5"
-testbench = "0.4"
+testbench = "0.5"
