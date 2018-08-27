@@ -74,7 +74,7 @@
 #![deny(missing_docs)]
 
 extern crate crossbeam_utils;
-extern crate testbench;
+#[cfg(test)] extern crate testbench;
 
 use crossbeam_utils::CachePadded;
 
