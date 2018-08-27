@@ -134,7 +134,7 @@ I'd like it to be.
 First of all, we have sequential tests, which are very thorough but obviously
 do not check the lock-free/synchronization part. You run them as follows:
 
-    $ cargo test --release
+    $ cargo test --tests && cargo test --features raw
 
 Then we have a concurrent test where a reader thread continuously observes the
 values from a rate-limited writer thread, and makes sure that he can see every
@@ -161,6 +161,8 @@ To run the concurrent test and the benchmarks, make sure no one is eating CPU in
 the background and do:
 
     $ cargo test --release -- --ignored --nocapture --test-threads=1
+
+(As before, you can also test with `--features raw`)
 
 Here is a guide to interpreting the benchmark results:
 

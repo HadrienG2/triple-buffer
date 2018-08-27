@@ -40,9 +40,6 @@
 //! [cargo feature](http://doc.crates.io/manifest.html#usage-in-end-products).
 //!
 //! ```rust
-//! # #[cfg(feature="raw")]
-//! # fn test_impl() {
-//! #
 //! // Create and split a triple buffer
 //! use triple_buffer::TripleBuffer;
 //! let buf = TripleBuffer::new(String::with_capacity(42));
@@ -72,18 +69,6 @@
 //!
 //! // Post-process the output value before use
 //! raw_output.push_str("world!");
-//! #
-//! # }
-//! #
-//! # #[cfg(not(feature="raw"))]
-//! # #[deprecated]
-//! # fn test_impl() {
-//! #     // If you see a warning here, it means that this example was compiled
-//! #     // without the required "raw" feature. We cannot make this a hard
-//! #     // error yet because current Cargo does not allow adding that feature.
-//! # }
-//! #
-//! # test_impl()
 //! ```
 
 #![deny(missing_docs)]

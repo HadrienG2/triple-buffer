@@ -21,6 +21,7 @@ matrix:
 # The main build
 script:
   - cargo build
-  - cargo test
+  - cargo test --tests
+  - cargo test --features raw
   - cargo test --release -- --ignored --nocapture --test-threads=1
-  - cargo test --release --features="raw" -- --ignored --nocapture --test-threads=1
+  - cargo test --release --features raw -- --ignored --nocapture --test-threads=1
