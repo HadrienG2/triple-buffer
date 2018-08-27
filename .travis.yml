@@ -10,7 +10,7 @@ rust:
   - nightly
   - beta
   - stable
-  - 1.12.0
+  - 1.26.0
 
 # It may not be our fault if a Rust nightly breaks, so we tolerate it
 matrix:
