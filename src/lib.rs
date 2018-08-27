@@ -1038,7 +1038,7 @@ mod benchmarks {
         let mut buf = ::TripleBuffer::new(0u32);
 
         // Benchmark clean reads
-        testbench::benchmark(4_000_000_000, || {
+        testbench::benchmark(4_290_000_000, || {
             let read = *buf.output.read();
             assert!(read < u32::max_value());
         });
@@ -1053,7 +1053,7 @@ mod benchmarks {
 
         // Benchmark writes
         let mut iter = 1u32;
-        testbench::benchmark(440_000_000, || {
+        testbench::benchmark(600_000_000, || {
             buf.input.write(iter);
             iter+= 1;
         });
@@ -1068,7 +1068,7 @@ mod benchmarks {
 
         // Benchmark writes + dirty reads
         let mut iter = 1u32;
-        testbench::benchmark(220_000_000u32, || {
+        testbench::benchmark(280_000_000u32, || {
             buf.input.write(iter);
             iter+= 1;
             let read = *buf.output.read();
@@ -1087,7 +1087,7 @@ mod benchmarks {
         // Benchmark reads under concurrent write pressure
         let mut counter = 0u32;
         testbench::concurrent_benchmark(
-            40_000_000u32,
+            80_000_000u32,
             move || {
                 let read = *buf_output.read();
                 assert!(read < u32::max_value());
@@ -1110,7 +1110,7 @@ mod benchmarks {
         // Benchmark writes under concurrent read pressure
         let mut iter = 1u32;
         testbench::concurrent_benchmark(
-            60_000_000u32,
+            120_000_000u32,
             move || {
                 buf_input.write(iter);
                 iter += 1;
