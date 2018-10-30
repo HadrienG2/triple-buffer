@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn initial_state() {
         // Let's create a triple buffer
-        let mut buf = ::TripleBuffer::new(42);
+        let mut buf = crate::TripleBuffer::new(42);
         check_buf_state(&mut buf, false);
         assert_eq!(*buf.output.read(), 42);
     }
@@ -545,36 +545,36 @@ mod tests {
     #[test]
     fn partial_eq_shared() {
         // Let's create some dummy shared state
-        let dummy_state = ::SharedState::<u16> {
+        let dummy_state = crate::SharedState::<u16> {
             buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-            back_info: ::AtomicBackBufferInfo::new(0b10),
+            back_info: crate::AtomicBackBufferInfo::new(0b10),
         };
 
         // Check that the dummy state is equal to itself
         assert!(unsafe { dummy_state.eq(&dummy_state) });
 
         // Check that it's not equal to a state where buffer contents differ
-        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+        assert!(unsafe { !dummy_state.eq(&crate::SharedState::<u16> {
             buffers: [new_buffer(114), new_buffer(222), new_buffer(333)],
-            back_info: ::AtomicBackBufferInfo::new(0b10),
+            back_info: crate::AtomicBackBufferInfo::new(0b10),
         })});
-        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+        assert!(unsafe { !dummy_state.eq(&crate::SharedState::<u16> {
             buffers: [new_buffer(111), new_buffer(225), new_buffer(333)],
-            back_info: ::AtomicBackBufferInfo::new(0b10),
+            back_info: crate::AtomicBackBufferInfo::new(0b10),
         })});
-        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+        assert!(unsafe { !dummy_state.eq(&crate::SharedState::<u16> {
             buffers: [new_buffer(111), new_buffer(222), new_buffer(336)],
-            back_info: ::AtomicBackBufferInfo::new(0b10),
+            back_info: crate::AtomicBackBufferInfo::new(0b10),
         })});
 
         // Check that it's not equal to a state where the back info differs
-        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+        assert!(unsafe { !dummy_state.eq(&crate::SharedState::<u16> {
             buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-            back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b10),
+            back_info: crate::AtomicBackBufferInfo::new(crate::BACK_DIRTY_BIT & 0b10),
         })});
-        assert!(unsafe { !dummy_state.eq(&::SharedState::<u16> {
+        assert!(unsafe { !dummy_state.eq(&crate::SharedState::<u16> {
             buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-            back_info: ::AtomicBackBufferInfo::new(0b01),
+            back_info: crate::AtomicBackBufferInfo::new(0b01),
         })});
     }
 
@@ -582,7 +582,7 @@ mod tests {
     #[test]
     fn partial_eq() {
         // Create a triple buffer
-        let buf = ::TripleBuffer::new("test");
+        let buf = crate::TripleBuffer::new("test");
 
         // Check that it is equal to itself
         assert_eq!(buf, buf);
@@ -590,7 +590,7 @@ mod tests {
         // Make another buffer with different contents. As buffer creation is
         // deterministic, this should only have an impact on the shared state,
         // but the buffers should nevertheless be considered different.
-        let buf2 = ::TripleBuffer::new("taste");
+        let buf2 = crate::TripleBuffer::new("taste");
         assert_eq!(buf.input.input_idx, buf2.input.input_idx);
         assert_eq!(buf.output.output_idx, buf2.output.output_idx);
         assert!(buf != buf2);
@@ -599,7 +599,7 @@ mod tests {
         // also lead two TripleBuffers to be considered different (this test
         // technically creates an invalid TripleBuffer state, but it's the only
         // way to check that the PartialEq impl is exhaustive)
-        let mut buf3 = ::TripleBuffer::new("test");
+        let mut buf3 = crate::TripleBuffer::new("test");
         assert_eq!(buf, buf3);
         let old_input_idx = buf3.input.input_idx;
         buf3.input.input_idx = buf3.output.output_idx;
@@ -613,19 +613,19 @@ mod tests {
     #[test]
     fn clone_shared() {
         // Let's create some dummy shared state
-        let dummy_state = ::SharedState::<u8> {
+        let dummy_state = crate::SharedState::<u8> {
             buffers: [new_buffer(123), new_buffer(231), new_buffer(132)],
-            back_info: ::AtomicBackBufferInfo::new(::BACK_DIRTY_BIT & 0b01),
+            back_info: crate::AtomicBackBufferInfo::new(crate::BACK_DIRTY_BIT & 0b01),
         };
 
         // Now, try to clone it
         let dummy_state_copy = unsafe { dummy_state.clone() };
 
         // Check that the contents of the original state did not change
-        assert!(unsafe { dummy_state.eq(&::SharedState::<u8> {
+        assert!(unsafe { dummy_state.eq(&crate::SharedState::<u8> {
             buffers: [new_buffer(123), new_buffer(231), new_buffer(132)],
-            back_info: ::AtomicBackBufferInfo::new(
-                ::BACK_DIRTY_BIT & 0b01
+            back_info: crate::AtomicBackBufferInfo::new(
+                crate::BACK_DIRTY_BIT & 0b01
             ),
         })});
 
@@ -637,7 +637,7 @@ mod tests {
     #[test]
     fn clone() {
         // Create a triple buffer
-        let mut buf = ::TripleBuffer::new(4.2);
+        let mut buf = crate::TripleBuffer::new(4.2);
 
         // Put it in a nontrivial state
         unsafe {
@@ -645,7 +645,7 @@ mod tests {
             *buf.input.shared.buffers[1].get() = 3.4;
             *buf.input.shared.buffers[2].get() = 5.6;
         }
-        buf.input.shared.back_info.store(::BACK_DIRTY_BIT & 0b01,
+        buf.input.shared.back_info.store(crate::BACK_DIRTY_BIT & 0b01,
                                          Ordering::Relaxed);
         buf.input.input_idx = 0b10;
         buf.output.output_idx = 0b00;
@@ -668,7 +668,7 @@ mod tests {
             assert_eq!(*buf.input.shared.buffers[2].get(), 5.6);
         }
         assert_eq!(buf.input.shared.back_info.load(Ordering::Relaxed),
-                   ::BACK_DIRTY_BIT & 0b01);
+                   crate::BACK_DIRTY_BIT & 0b01);
         assert_eq!(buf.input.input_idx, 0b10);
         assert_eq!(buf.output.output_idx, 0b00);
     }
@@ -677,12 +677,12 @@ mod tests {
     #[test]
     fn swaps() {
         // Create a new buffer, and a way to track any changes to it
-        let mut buf = ::TripleBuffer::new([123, 456]);
+        let mut buf = crate::TripleBuffer::new([123, 456]);
         let old_buf = buf.clone();
         let old_input_idx = old_buf.input.input_idx;
         let old_shared = &old_buf.input.shared;
         let old_back_info = old_shared.back_info.load(Ordering::Relaxed);
-        let old_back_idx = old_back_info & ::BACK_INDEX_MASK;
+        let old_back_idx = old_back_info & crate::BACK_INDEX_MASK;
         let old_output_idx = old_buf.output.output_idx;
 
         // Check that updating from a clean state works
@@ -695,7 +695,7 @@ mod tests {
         let mut expected_buf = old_buf.clone();
         expected_buf.input.input_idx = old_back_idx;
         expected_buf.input.shared.back_info.store(
-            old_input_idx | ::BACK_DIRTY_BIT,
+            old_input_idx | crate::BACK_DIRTY_BIT,
             Ordering::Relaxed
         );
         assert_eq!(buf, expected_buf);
@@ -706,7 +706,7 @@ mod tests {
         let mut expected_buf = old_buf.clone();
         expected_buf.input.input_idx = old_input_idx;
         expected_buf.input.shared.back_info.store(
-            old_back_idx | ::BACK_DIRTY_BIT,
+            old_back_idx | crate::BACK_DIRTY_BIT,
             Ordering::Relaxed
         );
         assert_eq!(buf, expected_buf);
@@ -727,7 +727,7 @@ mod tests {
     #[test]
     fn sequential_write() {
         // Let's create a triple buffer
-        let mut buf = ::TripleBuffer::new(false);
+        let mut buf = crate::TripleBuffer::new(false);
 
         // Back up the initial buffer state
         let old_buf = buf.clone();
@@ -754,7 +754,7 @@ mod tests {
     #[test]
     fn sequential_read() {
         // Let's create a triple buffer and write into it
-        let mut buf = ::TripleBuffer::new(1.0);
+        let mut buf = crate::TripleBuffer::new(1.0);
         buf.input.write(4.2);
 
         // Test readout from dirty (freshly written) triple buffer
@@ -801,7 +801,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 100_000_000;
 
         // This is the buffer that our reader and writer will share
-        let buf = ::TripleBuffer::new(UsizeRaceCell::new(0));
+        let buf = crate::TripleBuffer::new(UsizeRaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which increments a shared value in a loop,
@@ -848,7 +848,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 1_250;
 
         // This is the buffer that our reader and writer will share
-        let buf = ::TripleBuffer::new(UsizeRaceCell::new(0));
+        let buf = crate::TripleBuffer::new(UsizeRaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which slowly increments a shared value,
@@ -941,7 +941,7 @@ mod tests {
 
     /// Range check for triple buffer indexes
     #[allow(unused_comparisons)]
-    fn index_in_range(idx: ::BufferIndex) -> bool {
+    fn index_in_range(idx: crate::BufferIndex) -> bool {
         (idx >= 0) & (idx <= 2)
     }
 
@@ -951,7 +951,7 @@ mod tests {
     }
 
     /// Check the state of a buffer, and the effect of queries on it
-    fn check_buf_state<T>(buf: &mut ::TripleBuffer<T>, expected_dirty_bit: bool)
+    fn check_buf_state<T>(buf: &mut crate::TripleBuffer<T>, expected_dirty_bit: bool)
         where T: Clone + Debug + PartialEq + Send
     {
         // Make a backup of the buffer's initial state
@@ -962,8 +962,8 @@ mod tests {
 
         // Access the shared state and decode back-buffer information
         let back_info = buf.input.shared.back_info.load(Ordering::Relaxed);
-        let back_idx = back_info & ::BACK_INDEX_MASK;
-        let back_buffer_dirty = back_info & ::BACK_DIRTY_BIT != 0;
+        let back_idx = back_info & crate::BACK_INDEX_MASK;
+        let back_buffer_dirty = back_info & crate::BACK_DIRTY_BIT != 0;
 
         // Input-/output-/back-buffer indexes must be in range
         assert!(index_in_range(buf.input.input_idx));
@@ -1019,7 +1019,7 @@ mod benchmarks {
     #[ignore]
     fn clean_read() {
         // Create a buffer
-        let mut buf = ::TripleBuffer::new(0u32);
+        let mut buf = crate::TripleBuffer::new(0u32);
 
         // Benchmark clean reads
         testbench::benchmark(2_500_000_000, || {
@@ -1033,7 +1033,7 @@ mod benchmarks {
     #[ignore]
     fn write() {
         // Create a buffer
-        let mut buf = ::TripleBuffer::new(0u32);
+        let mut buf = crate::TripleBuffer::new(0u32);
 
         // Benchmark writes
         let mut iter = 1u32;
@@ -1048,7 +1048,7 @@ mod benchmarks {
     #[ignore]
     fn write_and_dirty_read() {
         // Create a buffer
-        let mut buf = ::TripleBuffer::new(0u32);
+        let mut buf = crate::TripleBuffer::new(0u32);
 
         // Benchmark writes + dirty reads
         let mut iter = 1u32;
@@ -1065,7 +1065,7 @@ mod benchmarks {
     #[ignore]
     fn concurrent_read() {
         // Create a buffer
-        let buf = ::TripleBuffer::new(0u32);
+        let buf = crate::TripleBuffer::new(0u32);
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Benchmark reads under concurrent write pressure
@@ -1088,7 +1088,7 @@ mod benchmarks {
     #[ignore]
     fn concurrent_write() {
         // Create a buffer
-        let buf = ::TripleBuffer::new(0u32);
+        let buf = crate::TripleBuffer::new(0u32);
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Benchmark writes under concurrent read pressure
