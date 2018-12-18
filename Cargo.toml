@@ -9,7 +9,6 @@ readme = "README.md"
 keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-free" ]
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
 license = "MPL-2.0"
-maintenance = { status = "passively-maintained" }
 
 [features]
 # Enable full access to the read and write buffers. This has a slight cost in
