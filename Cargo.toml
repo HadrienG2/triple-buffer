@@ -20,7 +20,7 @@ raw = []
 travis-ci = { repository = "HadrienG2/triple-buffer", branch = "master" }
 
 [dependencies]
-crossbeam-utils = "0.5"
+crossbeam-utils = "0.6"
 
 [dev-dependencies]
-testbench = "0.5"
+testbench = "0.6"
