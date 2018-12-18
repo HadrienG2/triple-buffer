@@ -109,7 +109,7 @@ pub struct TripleBuffer<T: Send> {
 //
 impl<T: Clone + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
-    pub fn new(initial: T) -> Self {
+    pub fn new(initial: &T) -> Self {
         Self::new_impl(|| initial.clone())
     }
 }
@@ -117,7 +117,7 @@ impl<T: Clone + Send> TripleBuffer<T> {
 impl<T: Default + Send> Default for TripleBuffer<T> {
     /// Construct a triple buffer with a default-constructed value
     fn default() -> Self {
-        Self::new_impl(|| T::default())
+        Self::new_impl(T::default)
     }
 }
 //
@@ -414,7 +414,7 @@ impl<T: Send> Output<T> {
     /// Check out incoming output buffer updates (internal version)
     fn update(&mut self) -> bool {
         // Access the shared state
-        let ref shared_state = *self.shared;
+        let shared_state = &(*self.shared);
 
         // Check if an update is present in the back-buffer
         let updated = self.updated();
