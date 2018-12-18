@@ -120,7 +120,7 @@ impl<T: Default + Send> Default for TripleBuffer<T> {
 //
 impl<T: Send> TripleBuffer<T> {
     /// Construct a triple buffer, using a functor to generate initial values
-    fn new_impl<F: FnMut() -> T>(mut generator: F) -> Self {
+    fn new_impl(mut generator: impl FnMut() -> T) -> Self {
         // Start with the shared state...
         let mut new_buffer = || CachePadded::new(UnsafeCell::new(generator()));
         let shared_state = Arc::new(SharedState {
