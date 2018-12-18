@@ -109,7 +109,8 @@ pub struct TripleBuffer<T: Send> {
 //
 impl<T: Clone + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
-    pub fn new(initial: &T) -> Self {
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn new(initial: T) -> Self {
         Self::new_impl(|| initial.clone())
     }
 }
