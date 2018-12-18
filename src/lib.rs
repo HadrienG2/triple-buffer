@@ -73,19 +73,15 @@
 
 #![deny(missing_docs)]
 
-extern crate crossbeam_utils;
-#[cfg(test)] extern crate testbench;
-
 use crossbeam_utils::CachePadded;
 
 use std::{
     cell::UnsafeCell,
     sync::{
-        Arc,
         atomic::{AtomicUsize, Ordering},
+        Arc,
     },
 };
-
 
 /// A triple buffer, useful for nonblocking and thread-safe data sharing
 ///
@@ -127,12 +123,10 @@ impl<T: Send> TripleBuffer<T> {
     fn new_impl<F: FnMut() -> T>(mut generator: F) -> Self {
         // Start with the shared state...
         let mut new_buffer = || CachePadded::new(UnsafeCell::new(generator()));
-        let shared_state = Arc::new(
-            SharedState {
-                buffers: [new_buffer(), new_buffer(), new_buffer()],
-                back_info: AtomicBackBufferInfo::new(0),
-            }
-        );
+        let shared_state = Arc::new(SharedState {
+            buffers: [new_buffer(), new_buffer(), new_buffer()],
+            back_info: AtomicBackBufferInfo::new(0),
+        });
 
         // ...then construct the input and output structs
         TripleBuffer {
@@ -183,12 +177,11 @@ impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
             unsafe { (*self.input.shared).eq(&*other.input.shared) };
 
         // Compare the rest of the triple buffer states
-        shared_states_equal &&
-        (self.input.input_idx == other.input.input_idx) &&
-        (self.output.output_idx == other.output.output_idx)
+        shared_states_equal
+            && (self.input.input_idx == other.input.input_idx)
+            && (self.output.output_idx == other.output.output_idx)
     }
 }
-
 
 /// Producer interface to the triple buffer
 ///
@@ -249,7 +242,7 @@ impl<T: Send> Input<T> {
     /// Alternative designs based on Drop were considered, but ultimately deemed
     /// too magical for the target audience of this method.
     ///
-    #[cfg(any(feature="raw", test))]
+    #[cfg(any(feature = "raw", test))]
     pub fn raw_input_buffer(&mut self) -> &mut T {
         self.input_buffer()
     }
@@ -260,7 +253,7 @@ impl<T: Send> Input<T> {
     /// this method to publish your updates to the consumer. It will send back
     /// an output flag which tells you whether an unread value was overwritten.
     ///
-    #[cfg(any(feature="raw", test))]
+    #[cfg(any(feature = "raw", test))]
     pub fn raw_publish(&mut self) -> bool {
         self.publish()
     }
@@ -285,7 +278,7 @@ impl<T: Send> Input<T> {
     /// its writes. If not, we only need to propagate our own writes.
     ///
     fn swap_ordering() -> Ordering {
-        if cfg!(feature="raw") {
+        if cfg!(feature = "raw") {
             Ordering::AcqRel
         } else {
             Ordering::Release
@@ -297,7 +290,7 @@ impl<T: Send> Input<T> {
         // Swap the input buffer and the back buffer, setting the dirty bit
         let former_back_info = self.shared.back_info.swap(
             self.input_idx | BACK_DIRTY_BIT,
-            Self::swap_ordering()  // Propagate buffer updates as well
+            Self::swap_ordering(), // Propagate buffer updates as well
         );
 
         // The old back buffer becomes our new input buffer
@@ -307,7 +300,6 @@ impl<T: Send> Input<T> {
         former_back_info & BACK_DIRTY_BIT != 0
     }
 }
-
 
 /// Consumer interface to the triple buffer
 ///
@@ -367,7 +359,7 @@ impl<T: Send> Output<T> {
     /// method does not update the output buffer automatically. You need to call
     /// raw_update() in order to fetch buffer updates from the producer.
     ///
-    #[cfg(any(feature="raw", test))]
+    #[cfg(any(feature = "raw", test))]
     pub fn raw_output_buffer(&mut self) -> &mut T {
         self.output_buffer()
     }
@@ -380,7 +372,7 @@ impl<T: Send> Output<T> {
     ///
     /// Return a flag telling whether an update was carried out
     ///
-    #[cfg(any(feature="raw", test))]
+    #[cfg(any(feature = "raw", test))]
     pub fn raw_update(&mut self) -> bool {
         self.update()
     }
@@ -405,7 +397,7 @@ impl<T: Send> Output<T> {
     /// back to the producer. Otherwise, we only need to fetch producer updates.
     ///
     fn swap_ordering() -> Ordering {
-        if cfg!(feature="raw") {
+        if cfg!(feature = "raw") {
             Ordering::AcqRel
         } else {
             Ordering::Acquire
@@ -425,7 +417,7 @@ impl<T: Send> Output<T> {
             // the producer a new back-buffer to write to.
             let former_back_info = shared_state.back_info.swap(
                 self.output_idx,
-                Self::swap_ordering()  // Synchronize with buffer updates
+                Self::swap_ordering(), // Synchronize with buffer updates
             );
 
             // Make the old back-buffer our new output buffer
@@ -436,7 +428,6 @@ impl<T: Send> Output<T> {
         updated
     }
 }
-
 
 /// Triple buffer shared state
 ///
@@ -468,9 +459,9 @@ impl<T: Clone + Send> SharedState<T> {
         // ...so better define some shortcuts before getting started:
         SharedState {
             buffers: [clone_buffer(0), clone_buffer(1), clone_buffer(2)],
-            back_info:
-                AtomicBackBufferInfo::new(self.back_info
-                                              .load(Ordering::Relaxed)),
+            back_info: AtomicBackBufferInfo::new(
+                self.back_info.load(Ordering::Relaxed),
+            ),
         }
     }
 }
@@ -480,23 +471,21 @@ impl<T: PartialEq + Send> SharedState<T> {
     /// no one is concurrently accessing the triple buffer to avoid data races.
     unsafe fn eq(&self, other: &Self) -> bool {
         // Check whether the contents of all buffers are equal...
-        let buffers_equal = self.buffers
-            .iter()
-            .zip(other.buffers.iter())
-            .all(|tuple| -> bool {
-                     let (cell1, cell2) = tuple;
-                     *cell1.get() == *cell2.get()
-                 });
+        let buffers_equal = self.buffers.iter().zip(other.buffers.iter()).all(
+            |tuple| -> bool {
+                let (cell1, cell2) = tuple;
+                *cell1.get() == *cell2.get()
+            },
+        );
 
         // ...then check whether the rest of the shared state is equal
-        buffers_equal &&
-        (self.back_info.load(Ordering::Relaxed) ==
-         other.back_info.load(Ordering::Relaxed))
+        buffers_equal
+            && (self.back_info.load(Ordering::Relaxed)
+                == other.back_info.load(Ordering::Relaxed))
     }
 }
 //
 unsafe impl<T: Send> Sync for SharedState<T> {}
-
 
 /// Index types used for triple buffering
 ///
@@ -513,33 +502,24 @@ type AtomicBackBufferInfo = AtomicUsize;
 const BACK_INDEX_MASK: usize = 0b11; // Mask used to extract back-buffer index
 const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
 
-
 /// Unit tests
 #[cfg(test)]
 mod tests {
     use super::{
-        AtomicBackBufferInfo,
-        BACK_DIRTY_BIT,
-        BACK_INDEX_MASK,
-        BufferIndex,
-        SharedState,
-        TripleBuffer,
+        AtomicBackBufferInfo, BufferIndex, SharedState, TripleBuffer,
+        BACK_DIRTY_BIT, BACK_INDEX_MASK,
     };
 
     use crossbeam_utils::CachePadded;
 
     use std::{
-        cell::UnsafeCell,
-        fmt::Debug,
-        sync::atomic::Ordering,
-        ops::Deref,
-        thread,
-        time::Duration,
+        cell::UnsafeCell, fmt::Debug, ops::Deref, sync::atomic::Ordering,
+        thread, time::Duration,
     };
 
     use testbench::{
         self,
-        race_cell::{Racey, RaceCell},
+        race_cell::{RaceCell, Racey},
     };
 
     /// Check that triple buffers are properly initialized
@@ -564,28 +544,38 @@ mod tests {
         assert!(unsafe { dummy_state.eq(&dummy_state) });
 
         // Check that it's not equal to a state where buffer contents differ
-        assert!(unsafe { !dummy_state.eq(&SharedState::<u16> {
-            buffers: [new_buffer(114), new_buffer(222), new_buffer(333)],
-            back_info: AtomicBackBufferInfo::new(0b10),
-        })});
-        assert!(unsafe { !dummy_state.eq(&SharedState::<u16> {
-            buffers: [new_buffer(111), new_buffer(225), new_buffer(333)],
-            back_info: AtomicBackBufferInfo::new(0b10),
-        })});
-        assert!(unsafe { !dummy_state.eq(&SharedState::<u16> {
-            buffers: [new_buffer(111), new_buffer(222), new_buffer(336)],
-            back_info: AtomicBackBufferInfo::new(0b10),
-        })});
+        assert!(unsafe {
+            !dummy_state.eq(&SharedState::<u16> {
+                buffers: [new_buffer(114), new_buffer(222), new_buffer(333)],
+                back_info: AtomicBackBufferInfo::new(0b10),
+            })
+        });
+        assert!(unsafe {
+            !dummy_state.eq(&SharedState::<u16> {
+                buffers: [new_buffer(111), new_buffer(225), new_buffer(333)],
+                back_info: AtomicBackBufferInfo::new(0b10),
+            })
+        });
+        assert!(unsafe {
+            !dummy_state.eq(&SharedState::<u16> {
+                buffers: [new_buffer(111), new_buffer(222), new_buffer(336)],
+                back_info: AtomicBackBufferInfo::new(0b10),
+            })
+        });
 
         // Check that it's not equal to a state where the back info differs
-        assert!(unsafe { !dummy_state.eq(&SharedState::<u16> {
-            buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-            back_info: AtomicBackBufferInfo::new(BACK_DIRTY_BIT & 0b10),
-        })});
-        assert!(unsafe { !dummy_state.eq(&SharedState::<u16> {
-            buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-            back_info: AtomicBackBufferInfo::new(0b01),
-        })});
+        assert!(unsafe {
+            !dummy_state.eq(&SharedState::<u16> {
+                buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
+                back_info: AtomicBackBufferInfo::new(BACK_DIRTY_BIT & 0b10),
+            })
+        });
+        assert!(unsafe {
+            !dummy_state.eq(&SharedState::<u16> {
+                buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
+                back_info: AtomicBackBufferInfo::new(0b01),
+            })
+        });
     }
 
     /// Check that TripleBuffer's PartialEq impl works
@@ -632,12 +622,12 @@ mod tests {
         let dummy_state_copy = unsafe { dummy_state.clone() };
 
         // Check that the contents of the original state did not change
-        assert!(unsafe { dummy_state.eq(&SharedState::<u8> {
-            buffers: [new_buffer(123), new_buffer(231), new_buffer(132)],
-            back_info: AtomicBackBufferInfo::new(
-                BACK_DIRTY_BIT & 0b01
-            ),
-        })});
+        assert!(unsafe {
+            dummy_state.eq(&SharedState::<u8> {
+                buffers: [new_buffer(123), new_buffer(231), new_buffer(132)],
+                back_info: AtomicBackBufferInfo::new(BACK_DIRTY_BIT & 0b01),
+            })
+        });
 
         // Check that the contents of the original and final state are identical
         assert!(unsafe { dummy_state.eq(&dummy_state_copy) });
@@ -655,8 +645,10 @@ mod tests {
             *buf.input.shared.buffers[1].get() = 3.4;
             *buf.input.shared.buffers[2].get() = 5.6;
         }
-        buf.input.shared.back_info.store(BACK_DIRTY_BIT & 0b01,
-                                         Ordering::Relaxed);
+        buf.input
+            .shared
+            .back_info
+            .store(BACK_DIRTY_BIT & 0b01, Ordering::Relaxed);
         buf.input.input_idx = 0b10;
         buf.output.output_idx = 0b00;
 
@@ -664,8 +656,10 @@ mod tests {
         let buf_clone = buf.clone();
 
         // Check that the clone uses its own, separate shared data storage
-        assert_eq!(as_ptr(&buf_clone.output.shared),
-                   as_ptr(&buf_clone.output.shared));
+        assert_eq!(
+            as_ptr(&buf_clone.output.shared),
+            as_ptr(&buf_clone.output.shared)
+        );
         assert!(as_ptr(&buf_clone.input.shared) != as_ptr(&buf.input.shared));
 
         // Check that it is identical from PartialEq's point of view
@@ -677,8 +671,10 @@ mod tests {
             assert_eq!(*buf.input.shared.buffers[1].get(), 3.4);
             assert_eq!(*buf.input.shared.buffers[2].get(), 5.6);
         }
-        assert_eq!(buf.input.shared.back_info.load(Ordering::Relaxed),
-                   BACK_DIRTY_BIT & 0b01);
+        assert_eq!(
+            buf.input.shared.back_info.load(Ordering::Relaxed),
+            BACK_DIRTY_BIT & 0b01
+        );
         assert_eq!(buf.input.input_idx, 0b10);
         assert_eq!(buf.output.output_idx, 0b00);
     }
@@ -704,10 +700,11 @@ mod tests {
         assert!(!buf.input.raw_publish());
         let mut expected_buf = old_buf.clone();
         expected_buf.input.input_idx = old_back_idx;
-        expected_buf.input.shared.back_info.store(
-            old_input_idx | BACK_DIRTY_BIT,
-            Ordering::Relaxed
-        );
+        expected_buf
+            .input
+            .shared
+            .back_info
+            .store(old_input_idx | BACK_DIRTY_BIT, Ordering::Relaxed);
         assert_eq!(buf, expected_buf);
         check_buf_state(&mut buf, true);
 
@@ -715,20 +712,22 @@ mod tests {
         assert!(buf.input.raw_publish());
         let mut expected_buf = old_buf.clone();
         expected_buf.input.input_idx = old_input_idx;
-        expected_buf.input.shared.back_info.store(
-            old_back_idx | BACK_DIRTY_BIT,
-            Ordering::Relaxed
-        );
+        expected_buf
+            .input
+            .shared
+            .back_info
+            .store(old_back_idx | BACK_DIRTY_BIT, Ordering::Relaxed);
         assert_eq!(buf, expected_buf);
         check_buf_state(&mut buf, true);
 
         // Check that updating from a dirty state works
         assert!(buf.output.raw_update());
         expected_buf.output.output_idx = old_back_idx;
-        expected_buf.output.shared.back_info.store(
-            old_output_idx,
-            Ordering::Relaxed
-        );
+        expected_buf
+            .output
+            .shared
+            .back_info
+            .store(old_output_idx, Ordering::Relaxed);
         assert_eq!(buf, expected_buf);
         check_buf_state(&mut buf, false);
     }
@@ -828,8 +827,10 @@ mod tests {
                     let new_racey_value = buf_output.read().get();
                     match new_racey_value {
                         Racey::Consistent(new_value) => {
-                            assert!((new_value >= last_value) &&
-                                    (new_value <= TEST_WRITE_COUNT));
+                            assert!(
+                                (new_value >= last_value)
+                                    && (new_value <= TEST_WRITE_COUNT)
+                            );
                             last_value = new_value;
                         }
                         Racey::Inconsistent => {
@@ -837,7 +838,7 @@ mod tests {
                         }
                     }
                 }
-            }
+            },
         );
     }
 
@@ -877,8 +878,10 @@ mod tests {
                     let new_racey_value = buf_output.read().get();
                     match new_racey_value {
                         Racey::Consistent(new_value) => {
-                            assert!((new_value >= last_value) &&
-                                    (new_value - last_value <= 1));
+                            assert!(
+                                (new_value >= last_value)
+                                    && (new_value - last_value <= 1)
+                            );
                             last_value = new_value;
                         }
                         Racey::Inconsistent => {
@@ -886,7 +889,7 @@ mod tests {
                         }
                     }
                 }
-            }
+            },
         );
     }
 
@@ -896,7 +899,7 @@ mod tests {
     /// protocol, which must be checked as well.
     #[test]
     #[ignore]
-    #[cfg(feature="raw")]
+    #[cfg(feature = "raw")]
     fn concurrent_bidirectional_exchange() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
@@ -914,7 +917,7 @@ mod tests {
                     match buf_input.raw_input_buffer().get() {
                         Racey::Consistent(curr_value) => {
                             assert!(curr_value <= TEST_WRITE_COUNT);
-                        },
+                        }
                         Racey::Inconsistent => {
                             panic!("Inconsistent state exposed by the buffer!");
                         }
@@ -927,8 +930,10 @@ mod tests {
                 while last_value < TEST_WRITE_COUNT {
                     match buf_output.raw_output_buffer().get() {
                         Racey::Consistent(new_value) => {
-                            assert!((new_value >= last_value) &&
-                                    (new_value <= TEST_WRITE_COUNT));
+                            assert!(
+                                (new_value >= last_value)
+                                    && (new_value <= TEST_WRITE_COUNT)
+                            );
                             last_value = new_value;
                         }
                         Racey::Inconsistent => {
@@ -936,11 +941,11 @@ mod tests {
                         }
                     }
                     if buf_output.updated() {
-                        buf_output.raw_output_buffer().set(last_value/2);
+                        buf_output.raw_output_buffer().set(last_value / 2);
                         buf_output.raw_update();
                     }
                 }
-            }
+            },
         );
     }
 
@@ -962,7 +967,8 @@ mod tests {
 
     /// Check the state of a buffer, and the effect of queries on it
     fn check_buf_state<T>(buf: &mut TripleBuffer<T>, expected_dirty_bit: bool)
-        where T: Clone + Debug + PartialEq + Send
+    where
+        T: Clone + Debug + PartialEq + Send,
     {
         // Make a backup of the buffer's initial state
         let initial_buf = buf.clone();
@@ -989,8 +995,10 @@ mod tests {
         assert_eq!(back_buffer_dirty, expected_dirty_bit);
 
         // Check that the "input buffer" query behaves as expected
-        assert_eq!(as_ptr(&buf.input.raw_input_buffer()),
-                   buf.input.shared.buffers[buf.input.input_idx].get());
+        assert_eq!(
+            as_ptr(&buf.input.raw_input_buffer()),
+            buf.input.shared.buffers[buf.input.input_idx].get()
+        );
         assert_eq!(*buf, initial_buf);
 
         // Check that the "consumed" query behaves as expected
@@ -998,8 +1006,10 @@ mod tests {
         assert_eq!(*buf, initial_buf);
 
         // Check that the output_buffer query works in the initial state
-        assert_eq!(as_ptr(&buf.output.raw_output_buffer()),
-                   buf.output.shared.buffers[buf.output.output_idx].get());
+        assert_eq!(
+            as_ptr(&buf.output.raw_output_buffer()),
+            buf.output.shared.buffers[buf.output.output_idx].get()
+        );
         assert_eq!(*buf, initial_buf);
 
         // Check that the output buffer query works in the initial state
@@ -1007,7 +1017,6 @@ mod tests {
         assert_eq!(*buf, initial_buf);
     }
 }
-
 
 /// Performance benchmarks
 ///
@@ -1050,7 +1059,7 @@ mod benchmarks {
         let mut iter = 1u32;
         testbench::benchmark(640_000_000, || {
             buf.input.write(iter);
-            iter+= 1;
+            iter += 1;
         });
     }
 
@@ -1065,7 +1074,7 @@ mod benchmarks {
         let mut iter = 1u32;
         testbench::benchmark(290_000_000u32, || {
             buf.input.write(iter);
-            iter+= 1;
+            iter += 1;
             let read = *buf.output.read();
             assert!(read < u32::max_value());
         });
@@ -1090,7 +1099,7 @@ mod benchmarks {
             move || {
                 buf_input.write(counter);
                 counter = (counter + 1) % u32::max_value();
-            }
+            },
         );
     }
 
@@ -1113,7 +1122,7 @@ mod benchmarks {
             move || {
                 let read = *buf_output.read();
                 assert!(read < u32::max_value());
-            }
+            },
         );
     }
 }
