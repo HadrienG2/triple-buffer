@@ -10,7 +10,7 @@ rust:
   - nightly
   - beta
   - stable
-  - 1.30.0
+  - 1.31.0
 
 # It may not be our fault if a Rust nightly breaks, so we tolerate it
 matrix:
@@ -19,8 +19,11 @@ matrix:
     - rust: nightly
 
 # The main build
+before_script:
+  - rustup component add clippy
 script:
-  - cargo build
+  - cargo check
+  - cargo clippy
   - cargo test --tests
   - cargo test --features raw
   - cargo test --release -- --ignored --nocapture --test-threads=1
