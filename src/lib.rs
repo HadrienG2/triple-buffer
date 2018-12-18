@@ -529,7 +529,7 @@ mod tests {
 
     use testbench::{
         self,
-        race_cell::{Racey, UsizeRaceCell},
+        race_cell::{Racey, RaceCell},
     };
 
     /// Check that triple buffers are properly initialized
@@ -801,7 +801,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 100_000_000;
 
         // This is the buffer that our reader and writer will share
-        let buf = crate::TripleBuffer::new(UsizeRaceCell::new(0));
+        let buf = crate::TripleBuffer::new(RaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which increments a shared value in a loop,
@@ -810,7 +810,7 @@ mod tests {
         testbench::concurrent_test_2(
             move || {
                 for value in 1..(TEST_WRITE_COUNT + 1) {
-                    buf_input.write(UsizeRaceCell::new(value));
+                    buf_input.write(RaceCell::new(value));
                 }
             },
             move || {
@@ -848,7 +848,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 1_250;
 
         // This is the buffer that our reader and writer will share
-        let buf = crate::TripleBuffer::new(UsizeRaceCell::new(0));
+        let buf = crate::TripleBuffer::new(RaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which slowly increments a shared value,
@@ -857,7 +857,7 @@ mod tests {
         testbench::concurrent_test_2(
             move || {
                 for value in 1..(TEST_WRITE_COUNT + 1) {
-                    buf_input.write(UsizeRaceCell::new(value));
+                    buf_input.write(RaceCell::new(value));
                     thread::yield_now();
                     thread::sleep(Duration::from_millis(16));
                 }
@@ -893,7 +893,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 100_000_000;
 
         // This is the buffer that our reader and writer will share
-        let buf = ::TripleBuffer::new(UsizeRaceCell::new(0));
+        let buf = ::TripleBuffer::new(RaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which increments a shared value in a loop,
@@ -909,7 +909,7 @@ mod tests {
                             panic!("Inconsistent state exposed by the buffer!");
                         }
                     }
-                    buf_input.write(UsizeRaceCell::new(new_value));
+                    buf_input.write(RaceCell::new(new_value));
                 }
             },
             move || {
