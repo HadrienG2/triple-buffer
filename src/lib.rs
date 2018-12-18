@@ -818,7 +818,7 @@ mod tests {
         let mut last_value = 0usize;
         testbench::concurrent_test_2(
             move || {
-                for value in 1..(TEST_WRITE_COUNT + 1) {
+                for value in 1..=TEST_WRITE_COUNT {
                     buf_input.write(RaceCell::new(value));
                 }
             },
@@ -867,7 +867,7 @@ mod tests {
         let mut last_value = 0usize;
         testbench::concurrent_test_2(
             move || {
-                for value in 1..(TEST_WRITE_COUNT + 1) {
+                for value in 1..=TEST_WRITE_COUNT {
                     buf_input.write(RaceCell::new(value));
                     thread::yield_now();
                     thread::sleep(Duration::from_millis(16));
@@ -913,7 +913,7 @@ mod tests {
         // and a reader which makes sure that no unexpected value slips in.
         testbench::concurrent_test_2(
             move || {
-                for new_value in 1..(TEST_WRITE_COUNT + 1) {
+                for new_value in 1..=TEST_WRITE_COUNT {
                     match buf_input.raw_input_buffer().get() {
                         Racey::Consistent(curr_value) => {
                             assert!(curr_value <= TEST_WRITE_COUNT);
