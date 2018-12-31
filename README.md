@@ -3,6 +3,7 @@
 [![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)](https://crates.io/crates/triple_buffer)
 [![On docs.rs](https://docs.rs/triple_buffer/badge.svg)](https://docs.rs/triple_buffer/)
 [![Build status](https://travis-ci.org/HadrienG2/triple-buffer.svg?branch=master)](https://travis-ci.org/HadrienG2/triple-buffer)
+![Requires rustc 1.34+](https://img.shields.io/badge/rustc-1.34+-red.svg)
 
 
 ## What is this?
@@ -84,7 +85,7 @@ Compared to a mutex:
   be slowed down by cache contention, but no deadlock, livelock, or thread
   scheduling induced slowdown is possible.
 - Allows the producer and consumer to work simultaneously
-- Uses a lot more memory (3x payload + 4 integers vs 1x payload + 1 bool)
+- Uses a lot more memory (3x payload + 3x bytes vs 1x payload + 1 bool)
 - Does not allow in-place updates, as the producer and consumer do not access
   the same memory location
 - Should be slower if updates are rare and in-place updates are much more
@@ -99,7 +100,7 @@ Compared to the read-copy-update (RCU) primitive from the Linux kernel:
 - Does not use the inefficient compare-and-swap hardware primitive on update
 - Does not suffer from the ABA problem, allowing much simpler code
 - Allocates memory on initialization only, rather than on every update
-- May use more memory (3x payload + 4 integers vs 1x pointer + amount of
+- May use more memory (3x payload + 3x bytes vs 1x pointer + amount of
   payloads and refcounts that depends on the readout and update pattern)
 - Should be slower if updates are rare, faster if updates are frequent
 

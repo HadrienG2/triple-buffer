@@ -78,7 +78,7 @@ use crossbeam_utils::CachePadded;
 use std::{
     cell::UnsafeCell,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU8, Ordering},
         Arc,
     },
 };
@@ -269,7 +269,7 @@ impl<T: Send> Input<T> {
     /// exclusive access to this buffer.
     ///
     fn input_buffer(&mut self) -> &mut T {
-        let input_ptr = self.shared.buffers[self.input_idx].get();
+        let input_ptr = self.shared.buffers[self.input_idx as usize].get();
         unsafe { &mut *input_ptr }
     }
 
@@ -390,7 +390,7 @@ impl<T: Send> Output<T> {
     /// exclusive access to this buffer.
     ///
     fn output_buffer(&mut self) -> &mut T {
-        let output_ptr = self.shared.buffers[self.output_idx].get();
+        let output_ptr = self.shared.buffers[self.output_idx as usize].get();
         unsafe { &mut *output_ptr }
     }
 
@@ -456,7 +456,7 @@ impl<T: Clone + Send> SharedState<T> {
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
         // The use of UnsafeCell makes buffers somewhat cumbersome to clone...
-        let clone_buffer = |i: BufferIndex| -> CachePadded<UnsafeCell<T>> {
+        let clone_buffer = |i: usize| -> CachePadded<UnsafeCell<T>> {
             CachePadded::new(UnsafeCell::new((*self.buffers[i].get()).clone()))
         };
 
@@ -498,13 +498,11 @@ unsafe impl<T: Send> Sync for SharedState<T> {}
 /// value: 4) is set to 1 to indicate that the producer published an update into
 /// the back-buffer, and reset to 0 when the consumer fetches the update.
 ///
-/// TODO: Switch to i8 / AtomicI8 once the later is stable
-///
-type BufferIndex = usize;
+type BufferIndex = u8;
 //
-type AtomicBackBufferInfo = AtomicUsize;
-const BACK_INDEX_MASK: usize = 0b11; // Mask used to extract back-buffer index
-const BACK_DIRTY_BIT: usize = 0b100; // Bit set by producer to signal updates
+type AtomicBackBufferInfo = AtomicU8;
+const BACK_INDEX_MASK: u8 = 0b11; // Mask used to extract back-buffer index
+const BACK_DIRTY_BIT: u8 = 0b100; // Bit set by producer to signal updates
 
 /// Unit tests
 #[cfg(test)]
@@ -1001,7 +999,7 @@ mod tests {
         // Check that the "input buffer" query behaves as expected
         assert_eq!(
             as_ptr(&buf.input.raw_input_buffer()),
-            buf.input.shared.buffers[buf.input.input_idx].get()
+            buf.input.shared.buffers[buf.input.input_idx as usize].get()
         );
         assert_eq!(*buf, initial_buf);
 
@@ -1012,7 +1010,7 @@ mod tests {
         // Check that the output_buffer query works in the initial state
         assert_eq!(
             as_ptr(&buf.output.raw_output_buffer()),
-            buf.output.shared.buffers[buf.output.output_idx].get()
+            buf.output.shared.buffers[buf.output.output_idx as usize].get()
         );
         assert_eq!(*buf, initial_buf);
 
