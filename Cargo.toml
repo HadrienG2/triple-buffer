@@ -25,3 +25,6 @@ crossbeam-utils = "0.6"
 
 [dev-dependencies]
 testbench = "0.6"
+
+[package.metadata.docs.rs]
+all-features = true
