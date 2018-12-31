@@ -242,6 +242,7 @@ impl<T: Send> Input<T> {
     /// Alternative designs based on Drop were considered, but ultimately deemed
     /// too magical for the target audience of this method.
     ///
+    /// To use this method, you have to enable the crate's `raw` feature
     #[cfg(any(feature = "raw", test))]
     pub fn raw_input_buffer(&mut self) -> &mut T {
         self.input_buffer()
@@ -253,6 +254,7 @@ impl<T: Send> Input<T> {
     /// this method to publish your updates to the consumer. It will send back
     /// an output flag which tells you whether an unread value was overwritten.
     ///
+    /// To use this method, you have to enable the crate's `raw` feature
     #[cfg(any(feature = "raw", test))]
     pub fn raw_publish(&mut self) -> bool {
         self.publish()
@@ -359,6 +361,7 @@ impl<T: Send> Output<T> {
     /// method does not update the output buffer automatically. You need to call
     /// raw_update() in order to fetch buffer updates from the producer.
     ///
+    /// To use this method, you have to enable the crate's `raw` feature
     #[cfg(any(feature = "raw", test))]
     pub fn raw_output_buffer(&mut self) -> &mut T {
         self.output_buffer()
@@ -372,6 +375,7 @@ impl<T: Send> Output<T> {
     ///
     /// Return a flag telling whether an update was carried out
     ///
+    /// To use this method, you have to enable the crate's `raw` feature
     #[cfg(any(feature = "raw", test))]
     pub fn raw_update(&mut self) -> bool {
         self.update()
