@@ -19,6 +19,7 @@ raw = []
 
 [badges]
 travis-ci = { repository = "HadrienG2/triple-buffer", branch = "master" }
+maintenance = { status = "passively-maintained" }
 
 [dependencies]
 crossbeam-utils = "0.6"
