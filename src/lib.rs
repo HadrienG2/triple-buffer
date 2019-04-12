@@ -71,7 +71,7 @@
 //! raw_output.push_str("world!");
 //! ```
 
-#![deny(missing_docs)]
+#![deny(missing_debug_implementations, missing_docs)]
 
 use crossbeam_utils::CachePadded;
 
@@ -149,6 +149,7 @@ impl<T: Send> TripleBuffer<T> {
 //
 // The Clone and PartialEq traits are used internally for testing.
 //
+#[doc(hidden)]
 impl<T: Clone + Send> Clone for TripleBuffer<T> {
     fn clone(&self) -> Self {
         // Clone the shared state. This is safe because at this layer of the
@@ -169,6 +170,7 @@ impl<T: Clone + Send> Clone for TripleBuffer<T> {
     }
 }
 //
+#[doc(hidden)]
 impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
     fn eq(&self, other: &Self) -> bool {
         // Compare the shared states. This is safe because at this layer of the
@@ -451,6 +453,7 @@ struct SharedState<T: Send> {
     back_info: AtomicBackBufferInfo,
 }
 //
+#[doc(hidden)]
 impl<T: Clone + Send> SharedState<T> {
     /// Cloning the shared state is unsafe because you must ensure that no one
     /// is concurrently accessing it, since &self is enough for writing.
@@ -470,6 +473,7 @@ impl<T: Clone + Send> SharedState<T> {
     }
 }
 //
+#[doc(hidden)]
 impl<T: PartialEq + Send> SharedState<T> {
     /// Equality is unsafe for the same reason as cloning: you must ensure that
     /// no one is concurrently accessing the triple buffer to avoid data races.
