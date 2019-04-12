@@ -180,13 +180,13 @@ Here is a guide to interpreting the benchmark results:
 * `concurrent_read` measures the read performance when a writer is continuously
   writing. Again, a significant hit is to be expected.
 
-On my laptop's CPU (Intel Core i7-4720HQ), typical results are as follows:
+On an Intel Xeon E5-1620 v3 @ 3.50GHz, typical results are as follows:
 
-* Write: 7.4 ns
-* Clean read: 0.75 ns
-* Dirty read: 9.4 ns
-* Concurrent write: 41 ns
-* Concurrent read: 98 ns
+* Write: 7.8 ns
+* Clean read: 1.8 ns
+* Dirty read: 9.3 ns
+* Concurrent write: 45 ns
+* Concurrent read: 126 ns
 
 
 ## License
