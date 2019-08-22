@@ -25,7 +25,7 @@ maintenance = { status = "passively-maintained" }
 crossbeam-utils = "0.6"
 
 [dev-dependencies]
-testbench = "0.6"
+testbench = "0.7"
 
 [package.metadata.docs.rs]
 all-features = true
