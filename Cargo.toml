@@ -22,7 +22,7 @@ travis-ci = { repository = "HadrienG2/triple-buffer", branch = "master" }
 maintenance = { status = "passively-maintained" }
 
 [dependencies]
-crossbeam-utils = "0.6"
+crossbeam-utils = "0.7"
 
 [dev-dependencies]
 testbench = "0.7"
