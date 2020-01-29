@@ -17,8 +17,8 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  # Formatter output and lints don't depend on the operating system, and only
-  # need to be tested on nightly since we don't care about older expectations.
+  # Formatter output doesn't depend on the operating system or cargo features,
+  # and only need to be tested on nightly as we don't care about older norms.
   format:
     runs-on: ubuntu-latest
 
