@@ -39,7 +39,9 @@
 //! cost, which is why you will need to enable it explicitly using the "raw"
 //! [cargo feature](http://doc.crates.io/manifest.html#usage-in-end-products).
 //!
-//! ```ignore
+//! ```
+//! # #[cfg(feature = "raw")]
+//! # {
 //! // Create and split a triple buffer
 //! use triple_buffer::TripleBuffer;
 //! let buf = TripleBuffer::new(String::with_capacity(42));
@@ -69,6 +71,7 @@
 //!
 //! // Post-process the output value before use
 //! raw_output.push_str("world!");
+//! # }
 //! ```
 
 #![deny(missing_debug_implementations, missing_docs)]
