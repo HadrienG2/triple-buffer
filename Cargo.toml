@@ -1,6 +1,6 @@
 [package]
 name = "triple_buffer"
-version = "5.0.1"
+version = "5.0.2"
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
 description = "An implementation of triple buffering, useful for sharing frequently updated data between threads"
 documentation = "https://docs.rs/triple_buffer/"
@@ -18,7 +18,6 @@ edition = "2018"
 raw = []
 
 [badges]
-travis-ci = { repository = "HadrienG2/triple-buffer", branch = "master" }
 maintenance = { status = "passively-maintained" }
 
 [dependencies]
