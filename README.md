@@ -2,7 +2,7 @@
 
 [![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)](https://crates.io/crates/triple_buffer)
 [![On docs.rs](https://docs.rs/triple_buffer/badge.svg)](https://docs.rs/triple_buffer/)
-[![Build status](https://travis-ci.org/HadrienG2/triple-buffer.svg?branch=master)](https://travis-ci.org/HadrienG2/triple-buffer)
+![Main CI](https://github.com/HadrienG2/triple-buffer/workflows/Main%20CI/badge.svg)
 ![Requires rustc 1.34+](https://img.shields.io/badge/rustc-1.34+-red.svg)
 
 
@@ -135,7 +135,7 @@ I'd like it to be.
 First of all, we have sequential tests, which are very thorough but obviously
 do not check the lock-free/synchronization part. You run them as follows:
 
-    $ cargo test --tests && cargo test --features raw
+    $ cargo test && cargo test --features raw
 
 Then we have a concurrent test where a reader thread continuously observes the
 values from a rate-limited writer thread, and makes sure that he can see every
