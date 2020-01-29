@@ -69,7 +69,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             cargo-registry
 
@@ -77,7 +77,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
             cargo-index
 
@@ -85,7 +85,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target
-          key: cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
             cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
             cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}
@@ -136,7 +136,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             cargo-registry
 
@@ -144,7 +144,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
             cargo-index
 
@@ -152,7 +152,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target
-          key: cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
             cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
             cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}

@@ -71,7 +71,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             cargo-registry
 
@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
             cargo-index
 
@@ -129,7 +129,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
             cargo-registry
 
@@ -137,7 +137,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
             cargo-index
 
