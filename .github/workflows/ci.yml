@@ -19,7 +19,7 @@ on:
   push:
   pull_request:
   schedule:
-    - cron: '0 0 1,15 * *'
+    - cron: '0 0 2,16 * *'
 
 name: Continuous Integration
 
