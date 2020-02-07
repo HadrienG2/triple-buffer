@@ -865,7 +865,7 @@ mod tests {
     fn uncontended_concurrent_read_write() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
-        const TEST_WRITE_COUNT: usize = 1_250;
+        const TEST_WRITE_COUNT: usize = 625;
 
         // This is the buffer that our reader and writer will share
         let buf = TripleBuffer::new(RaceCell::new(0));
@@ -879,7 +879,7 @@ mod tests {
                 for value in 1..=TEST_WRITE_COUNT {
                     buf_input.write(RaceCell::new(value));
                     thread::yield_now();
-                    thread::sleep(Duration::from_millis(16));
+                    thread::sleep(Duration::from_millis(32));
                 }
             },
             move || {
