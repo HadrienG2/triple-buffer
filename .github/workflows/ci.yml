@@ -64,9 +64,7 @@ jobs:
   # Clippy and rustc lints depend on cargo features, but not on the operating
   # system. We don't care about warnings on the minimum supported Rust version,
   # only about building and running correctly.
-  lints-stable:
-    if: github.event_name != 'schedule'
-
+  lints:
     runs-on: ubuntu-latest
 
     strategy:
@@ -79,8 +77,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install toolchain
-        id: toolchain
+      - name: Install stable toolchain
+        id: toolchain-stable
+        if: github.event_name != 'schedule'
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -88,62 +87,8 @@ jobs:
           override: true
           components: clippy
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            cargo-registry
-
-      - name: Cache Cargo index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore_keys: |
-            cargo-index
-
-      - name: Cache Cargo check target directory
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore_keys: |
-            cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
-            cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}
-
-      - name: Type-check the program
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --features "${{ matrix.features }}"
-
-      - name: Check clippy lints
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --features "${{ matrix.features }}" -- -D warnings
-
-
-  # Variant of the lints-stable job for unstable periodical builds
-  lints-unstable:
-    if: github.event_name == 'schedule'
-
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        features:
-          - ''
-          - raw
-
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-
-      - name: Install toolchain
-        id: toolchain
+      - name: Install nightly toolchain
+        if: github.event_name == 'schedule'
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -168,6 +113,15 @@ jobs:
             cargo-index
 
       # NOTE: No target directory caching on unstable, see top comment.
+      - name: Cache Cargo check target directory
+        if: github.event_name != 'schedule'
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: cargo-target_check-rust_${{ steps.toolchain-stable.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore_keys: |
+            cargo-target_check-rust_${{ steps.toolchain-stable.outputs.rustc_hash }}-features_${{ matrix.features }}
+            cargo-target_check-rust_${{ steps.toolchain-stable.outputs.rustc_hash }}
 
       - name: Type-check the program
         uses: actions-rs/cargo@v1
@@ -252,6 +206,10 @@ jobs:
 
 
   # Variant of the test-stable job for unstable periodical builds
+  #
+  # FIXME: There should be a way to use conditional build matrices without
+  #        duplicating the whole job recipe...
+  #
   test-unstable:
     if: github.event_name == 'schedule'
 
