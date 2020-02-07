@@ -2,7 +2,7 @@
 
 [![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)](https://crates.io/crates/triple_buffer)
 [![On docs.rs](https://docs.rs/triple_buffer/badge.svg)](https://docs.rs/triple_buffer/)
-![Main CI](https://github.com/HadrienG2/triple-buffer/workflows/Main%20CI/badge.svg)
+[![Continuous Integration](https://github.com/HadrienG2/triple-buffer/workflows/Continuous%20Integration/badge.svg)](https://github.com/HadrienG2/triple-buffer/actions?query=workflow%3A%22Continuous+Integration%22)
 ![Requires rustc 1.34+](https://img.shields.io/badge/rustc-1.34+-red.svg)
 
 

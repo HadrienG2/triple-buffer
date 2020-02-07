@@ -1,0 +1,313 @@
+# There are two kinds of continuous integration jobs in this project:
+#
+# - Every code submission or master push passes continuous integration on the
+#   minimal supported Rust version and the current stable Rust version.
+# - Two times a month, a scheduled job makes sure that the code remains
+#   compatible and lint-free on upcoming Rust toolchains (beta and nightly).
+#
+# Here's why we don't cache some things:
+#
+# - Toolchain caching is hard to do correctly (there are permission problems
+#   since the toolchain is not installed in the home directory, we'd need to
+#   override toolchain's defaut directory to avoid that) and was not measured to
+#   be worthwhile on operating systems where it actually seems to work.
+# - There is no point in caching the target directory on unstable Rust releases,
+#   since its contents are invalidated by every compiler update, which happens
+#   relatively frequently at the time scale of scheduled unstable jobs.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 0 1,15 * *'
+
+name: Continuous Integration
+
+env:
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # Formatter output doesn't depend on the operating system or cargo features,
+  # and only need to be tested on the latest supported release of each CI run.
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        if: github.event_name != 'schedule'
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt
+
+      - name: Install nightly toolchain
+        if: github.event_name == 'schedule'
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: rustfmt
+
+      - name: Check format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+
+  # Clippy and rustc lints depend on cargo features, but not on the operating
+  # system. We don't care about warnings on the minimum supported Rust version,
+  # only about building and running correctly.
+  lints-stable:
+    if: github.event_name != 'schedule'
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        features:
+          - ''
+          - raw
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        id: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: clippy
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cargo-registry
+
+      - name: Cache Cargo index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore_keys: |
+            cargo-index
+
+      - name: Cache Cargo check target directory
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore_keys: |
+            cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
+            cargo-target_check-rust_${{ steps.toolchain.outputs.rustc_hash }}
+
+      - name: Type-check the program
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --features "${{ matrix.features }}"
+
+      - name: Check clippy lints
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --features "${{ matrix.features }}" -- -D warnings
+
+
+  # Variant of the lints-stable job for unstable periodical builds
+  lints-unstable:
+    if: github.event_name == 'schedule'
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        features:
+          - ''
+          - raw
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        id: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: clippy
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cargo-registry
+
+      - name: Cache Cargo index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore_keys: |
+            cargo-index
+
+      # NOTE: No target directory caching on unstable, see top comment.
+
+      - name: Type-check the program
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --features "${{ matrix.features }}"
+
+      - name: Check clippy lints
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --features "${{ matrix.features }}" -- -D warnings
+
+
+  # Run the tests on all supported OSes and Rust versions, for all features
+  test-stable:
+    if: github.event_name != 'schedule'
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        rust:
+          - stable
+          - 1.34.0  # Minimum supported Rust version
+        features:
+          - ''
+          - raw
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        id: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cargo-registry
+
+      - name: Cache Cargo index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore_keys: |
+            cargo-index
+
+      - name: Cache Cargo test target directory
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore_keys: |
+            cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
+            cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}
+
+      - name: Run basic tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}"
+
+      - name: Run concurrent tests and benchmarks
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --release -- --ignored --nocapture --test-threads=1
+
+
+  # Variant of the test-stable job for unstable periodical builds
+  test-unstable:
+    if: github.event_name == 'schedule'
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        rust:
+          - beta
+          - nightly
+        features:
+          - ''
+          - raw
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        id: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cargo-registry
+
+      - name: Cache Cargo index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore_keys: |
+            cargo-index
+
+      # NOTE: No target directory caching on unstable, see top comment.
+
+      - name: Run basic tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}"
+
+      - name: Run concurrent tests and benchmarks
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features "${{ matrix.features }}" --release -- --ignored --nocapture --test-threads=1
