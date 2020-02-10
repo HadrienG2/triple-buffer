@@ -178,8 +178,7 @@ impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
     fn eq(&self, other: &Self) -> bool {
         // Compare the shared states. This is safe because at this layer of the
         // interface, one needs an Input/Output &mut to mutate the shared state.
-        let shared_states_equal =
-            unsafe { (*self.input.shared).eq(&*other.input.shared) };
+        let shared_states_equal = unsafe { (*self.input.shared).eq(&*other.input.shared) };
 
         // Compare the rest of the triple buffer states
         shared_states_equal
@@ -469,9 +468,7 @@ impl<T: Clone + Send> SharedState<T> {
         // ...so better define some shortcuts before getting started:
         SharedState {
             buffers: [clone_buffer(0), clone_buffer(1), clone_buffer(2)],
-            back_info: AtomicBackBufferInfo::new(
-                self.back_info.load(Ordering::Relaxed),
-            ),
+            back_info: AtomicBackBufferInfo::new(self.back_info.load(Ordering::Relaxed)),
         }
     }
 }
@@ -482,17 +479,18 @@ impl<T: PartialEq + Send> SharedState<T> {
     /// no one is concurrently accessing the triple buffer to avoid data races.
     unsafe fn eq(&self, other: &Self) -> bool {
         // Check whether the contents of all buffers are equal...
-        let buffers_equal = self.buffers.iter().zip(other.buffers.iter()).all(
-            |tuple| -> bool {
+        let buffers_equal = self
+            .buffers
+            .iter()
+            .zip(other.buffers.iter())
+            .all(|tuple| -> bool {
                 let (cell1, cell2) = tuple;
                 *cell1.get() == *cell2.get()
-            },
-        );
+            });
 
         // ...then check whether the rest of the shared state is equal
         buffers_equal
-            && (self.back_info.load(Ordering::Relaxed)
-                == other.back_info.load(Ordering::Relaxed))
+            && (self.back_info.load(Ordering::Relaxed) == other.back_info.load(Ordering::Relaxed))
     }
 }
 //
@@ -515,15 +513,14 @@ const BACK_DIRTY_BIT: u8 = 0b100; // Bit set by producer to signal updates
 #[cfg(test)]
 mod tests {
     use super::{
-        AtomicBackBufferInfo, BufferIndex, SharedState, TripleBuffer,
-        BACK_DIRTY_BIT, BACK_INDEX_MASK,
+        AtomicBackBufferInfo, BufferIndex, SharedState, TripleBuffer, BACK_DIRTY_BIT,
+        BACK_INDEX_MASK,
     };
 
     use crossbeam_utils::CachePadded;
 
     use std::{
-        cell::UnsafeCell, fmt::Debug, ops::Deref, sync::atomic::Ordering,
-        thread, time::Duration,
+        cell::UnsafeCell, fmt::Debug, ops::Deref, sync::atomic::Ordering, thread, time::Duration,
     };
 
     use testbench::{
@@ -836,10 +833,7 @@ mod tests {
                     let new_racey_value = buf_output.read().get();
                     match new_racey_value {
                         Racey::Consistent(new_value) => {
-                            assert!(
-                                (new_value >= last_value)
-                                    && (new_value <= TEST_WRITE_COUNT)
-                            );
+                            assert!((new_value >= last_value) && (new_value <= TEST_WRITE_COUNT));
                             last_value = new_value;
                         }
                         Racey::Inconsistent => {
@@ -887,10 +881,7 @@ mod tests {
                     let new_racey_value = buf_output.read().get();
                     match new_racey_value {
                         Racey::Consistent(new_value) => {
-                            assert!(
-                                (new_value >= last_value)
-                                    && (new_value - last_value <= 1)
-                            );
+                            assert!((new_value >= last_value) && (new_value - last_value <= 1));
                             last_value = new_value;
                         }
                         Racey::Inconsistent => {
@@ -939,10 +930,7 @@ mod tests {
                 while last_value < TEST_WRITE_COUNT {
                     match buf_output.raw_output_buffer().get() {
                         Racey::Consistent(new_value) => {
-                            assert!(
-                                (new_value >= last_value)
-                                    && (new_value <= TEST_WRITE_COUNT)
-                            );
+                            assert!((new_value >= last_value) && (new_value <= TEST_WRITE_COUNT));
                             last_value = new_value;
                         }
                         Racey::Inconsistent => {
