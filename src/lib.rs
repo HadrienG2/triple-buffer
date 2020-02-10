@@ -125,11 +125,7 @@ impl<T: Send> TripleBuffer<T> {
     /// Construct a triple buffer, using a functor to generate initial values
     fn new_impl(mut generator: impl FnMut() -> T) -> Self {
         // Start with the shared state...
-        let mut new_buffer = || CachePadded::new(UnsafeCell::new(generator()));
-        let shared_state = Arc::new(SharedState {
-            buffers: [new_buffer(), new_buffer(), new_buffer()],
-            back_info: AtomicBackBufferInfo::new(0),
-        });
+        let shared_state = Arc::new(SharedState::new(|_i| generator(), 0));
 
         // ...then construct the input and output structs
         TripleBuffer {
@@ -452,7 +448,21 @@ struct SharedState<T: Send> {
     buffers: [CachePadded<UnsafeCell<T>>; 3],
 
     /// Information about the current back-buffer state
-    back_info: AtomicBackBufferInfo,
+    back_info: CachePadded<AtomicBackBufferInfo>,
+}
+//
+#[doc(hidden)]
+impl<T: Send> SharedState<T> {
+    /// Given (a way to generate) buffer contents and the back info, build the shared state
+    fn new(mut gen_buf_data: impl FnMut(usize) -> T, back_info: BackBufferInfo) -> Self {
+        let mut make_buf = |i| -> CachePadded<UnsafeCell<T>> {
+            CachePadded::new(UnsafeCell::new(gen_buf_data(i)))
+        };
+        Self {
+            buffers: [make_buf(0), make_buf(1), make_buf(2)],
+            back_info: CachePadded::new(AtomicBackBufferInfo::new(back_info)),
+        }
+    }
 }
 //
 #[doc(hidden)]
@@ -460,16 +470,10 @@ impl<T: Clone + Send> SharedState<T> {
     /// Cloning the shared state is unsafe because you must ensure that no one
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
-        // The use of UnsafeCell makes buffers somewhat cumbersome to clone...
-        let clone_buffer = |i: usize| -> CachePadded<UnsafeCell<T>> {
-            CachePadded::new(UnsafeCell::new((*self.buffers[i].get()).clone()))
-        };
-
-        // ...so better define some shortcuts before getting started:
-        SharedState {
-            buffers: [clone_buffer(0), clone_buffer(1), clone_buffer(2)],
-            back_info: AtomicBackBufferInfo::new(self.back_info.load(Ordering::Relaxed)),
-        }
+        Self::new(
+            |i| (*self.buffers[i].get()).clone(),
+            self.back_info.load(Ordering::Relaxed),
+        )
     }
 }
 //
@@ -504,6 +508,7 @@ unsafe impl<T: Send> Sync for SharedState<T> {}
 /// the back-buffer, and reset to 0 when the consumer fetches the update.
 ///
 type BufferIndex = u8;
+type BackBufferInfo = BufferIndex;
 //
 type AtomicBackBufferInfo = AtomicU8;
 const BACK_INDEX_MASK: u8 = 0b11; // Mask used to extract back-buffer index
@@ -512,16 +517,9 @@ const BACK_DIRTY_BIT: u8 = 0b100; // Bit set by producer to signal updates
 /// Unit tests
 #[cfg(test)]
 mod tests {
-    use super::{
-        AtomicBackBufferInfo, BufferIndex, SharedState, TripleBuffer, BACK_DIRTY_BIT,
-        BACK_INDEX_MASK,
-    };
+    use super::{BufferIndex, SharedState, TripleBuffer, BACK_DIRTY_BIT, BACK_INDEX_MASK};
 
-    use crossbeam_utils::CachePadded;
-
-    use std::{
-        cell::UnsafeCell, fmt::Debug, ops::Deref, sync::atomic::Ordering, thread, time::Duration,
-    };
+    use std::{fmt::Debug, ops::Deref, sync::atomic::Ordering, thread, time::Duration};
 
     use testbench::{
         self,
@@ -541,47 +539,24 @@ mod tests {
     #[test]
     fn partial_eq_shared() {
         // Let's create some dummy shared state
-        let dummy_state = SharedState::<u16> {
-            buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-            back_info: AtomicBackBufferInfo::new(0b10),
-        };
+        let dummy_state = SharedState::<u16>::new(|i| [111, 222, 333][i], 0b10);
 
         // Check that the dummy state is equal to itself
         assert!(unsafe { dummy_state.eq(&dummy_state) });
 
         // Check that it's not equal to a state where buffer contents differ
-        assert!(unsafe {
-            !dummy_state.eq(&SharedState::<u16> {
-                buffers: [new_buffer(114), new_buffer(222), new_buffer(333)],
-                back_info: AtomicBackBufferInfo::new(0b10),
-            })
-        });
-        assert!(unsafe {
-            !dummy_state.eq(&SharedState::<u16> {
-                buffers: [new_buffer(111), new_buffer(225), new_buffer(333)],
-                back_info: AtomicBackBufferInfo::new(0b10),
-            })
-        });
-        assert!(unsafe {
-            !dummy_state.eq(&SharedState::<u16> {
-                buffers: [new_buffer(111), new_buffer(222), new_buffer(336)],
-                back_info: AtomicBackBufferInfo::new(0b10),
-            })
-        });
+        assert!(unsafe { !dummy_state.eq(&SharedState::<u16>::new(|i| [114, 222, 333][i], 0b10)) });
+        assert!(unsafe { !dummy_state.eq(&SharedState::<u16>::new(|i| [111, 225, 333][i], 0b10)) });
+        assert!(unsafe { !dummy_state.eq(&SharedState::<u16>::new(|i| [111, 222, 336][i], 0b10)) });
 
         // Check that it's not equal to a state where the back info differs
         assert!(unsafe {
-            !dummy_state.eq(&SharedState::<u16> {
-                buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-                back_info: AtomicBackBufferInfo::new(BACK_DIRTY_BIT & 0b10),
-            })
+            !dummy_state.eq(&SharedState::<u16>::new(
+                |i| [111, 222, 333][i],
+                BACK_DIRTY_BIT & 0b10,
+            ))
         });
-        assert!(unsafe {
-            !dummy_state.eq(&SharedState::<u16> {
-                buffers: [new_buffer(111), new_buffer(222), new_buffer(333)],
-                back_info: AtomicBackBufferInfo::new(0b01),
-            })
-        });
+        assert!(unsafe { !dummy_state.eq(&SharedState::<u16>::new(|i| [111, 222, 333][i], 0b01)) });
     }
 
     /// Check that TripleBuffer's PartialEq impl works
@@ -619,20 +594,17 @@ mod tests {
     #[test]
     fn clone_shared() {
         // Let's create some dummy shared state
-        let dummy_state = SharedState::<u8> {
-            buffers: [new_buffer(123), new_buffer(231), new_buffer(132)],
-            back_info: AtomicBackBufferInfo::new(BACK_DIRTY_BIT & 0b01),
-        };
+        let dummy_state = SharedState::<u8>::new(|i| [123, 231, 132][i], BACK_DIRTY_BIT & 0b01);
 
         // Now, try to clone it
         let dummy_state_copy = unsafe { dummy_state.clone() };
 
         // Check that the contents of the original state did not change
         assert!(unsafe {
-            dummy_state.eq(&SharedState::<u8> {
-                buffers: [new_buffer(123), new_buffer(231), new_buffer(132)],
-                back_info: AtomicBackBufferInfo::new(BACK_DIRTY_BIT & 0b01),
-            })
+            dummy_state.eq(&SharedState::<u8>::new(
+                |i| [123, 231, 132][i],
+                BACK_DIRTY_BIT & 0b01,
+            ))
         });
 
         // Check that the contents of the original and final state are identical
@@ -944,11 +916,6 @@ mod tests {
                 }
             },
         );
-    }
-
-    /// Build data storage for a buffer
-    fn new_buffer<T>(contents: T) -> CachePadded<UnsafeCell<T>> {
-        CachePadded::new(UnsafeCell::new(contents))
     }
 
     /// Range check for triple buffer indexes
