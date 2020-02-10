@@ -1,6 +1,6 @@
 [package]
 name = "triple_buffer"
-version = "5.0.3"
+version = "5.0.4"
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
 description = "An implementation of triple buffering, useful for sharing frequently updated data between threads"
 documentation = "https://docs.rs/triple_buffer/"

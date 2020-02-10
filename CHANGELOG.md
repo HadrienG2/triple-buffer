@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes in the pipeline at the moment._
+
+
+## [5.0.4] - 2020-02-10
+
 ### Added
 
 - Add a changelog to the repository.
@@ -19,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Drop now-unnecessary manual `rustfmt` configuration.
+- Avoid false sharing of back-buffer information.
 
 
 ## [5.0.3] - 2020-02-07
@@ -213,7 +219,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.3...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.4...HEAD
+[5.0.3]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.3...v5.0.4
 [5.0.3]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.2...v5.0.3
 [5.0.2]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.1...v5.0.2
 [5.0.1]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.0...v5.0.1
