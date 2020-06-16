@@ -28,12 +28,3 @@ testbench = "0.7"
 
 [package.metadata.docs.rs]
 all-features = true
-
-[profile.release]
-lto = "full"
-codegen-units = 1
-panic = "abort"
-
-[profile.bench]
-lto = "full"
-codegen-units = 1
