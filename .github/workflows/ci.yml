@@ -5,15 +5,9 @@
 # - Two times a month, a scheduled job makes sure that the code remains
 #   compatible and lint-free on upcoming Rust toolchains (beta and nightly).
 #
-# Here's why we don't cache some things:
-#
-# - Toolchain caching is hard to do correctly (there are permission problems
-#   since the toolchain is not installed in the home directory, we'd need to
-#   override toolchain's defaut directory to avoid that) and was not measured to
-#   be worthwhile on operating systems where it actually seems to work.
-# - There is no point in caching the target directory on unstable Rust releases,
-#   since its contents are invalidated by every compiler update, which happens
-#   relatively frequently at the time scale of scheduled unstable jobs.
+# No caching of Rust toolchains or target directories is performed on unstable
+# runs, since those runs are rare and the caches would be invalidated inbetween
+# two of them (especially for nightly toolchains).
 
 on:
   push:
@@ -35,6 +29,17 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+
+      # NOTE: No need to put OS and rust version in key since only one is used
+      - name: Cache stable toolchain
+        if: github.event_name != 'schedule'
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.rustup/settings.toml
+            ~/.rustup/toolchains/stable-*
+            ~/.rustup/update-hashes/stable-*
+          key: format-toolchain
 
       - name: Install stable toolchain
         if: github.event_name != 'schedule'
@@ -77,6 +82,17 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
+      # NOTE: No need to put OS and rust version in key since only one is used
+      - name: Cache stable toolchain
+        if: github.event_name != 'schedule'
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.rustup/settings.toml
+            ~/.rustup/toolchains/stable-*
+            ~/.rustup/update-hashes/stable-*
+          key: lints-toolchain
+
       - name: Install stable toolchain
         id: toolchain-stable
         if: github.event_name != 'schedule'
@@ -96,32 +112,26 @@ jobs:
           override: true
           components: clippy
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v1
+      # NOTE: triple-buffer's dependency set does not depend on enabled features
+      - name: Cache Cargo registry and index
+        uses: actions/cache@v2
         with:
-          path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            cargo-registry
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: alljobs-deps-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: alljobs-deps
 
-      - name: Cache Cargo index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore_keys: |
-            cargo-index
-
-      # NOTE: No target directory caching on unstable, see top comment.
-      - name: Cache Cargo check target directory
+      # NOTE: No dependency on OS since only one is used for this step
+      - name: Cache stable Cargo check target directory
         if: github.event_name != 'schedule'
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: target
-          key: cargo-target_check-rust_${{ steps.toolchain-stable.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
+          key: lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
-            cargo-target_check-rust_${{ steps.toolchain-stable.outputs.rustc_hash }}-features_${{ matrix.features }}
-            cargo-target_check-rust_${{ steps.toolchain-stable.outputs.rustc_hash }}
+            lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
+            lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}
 
       - name: Type-check the program
         uses: actions-rs/cargo@v1
@@ -159,6 +169,16 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
+      - name: Cache stable toolchain
+        if: github.event_name != 'schedule'
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.rustup/settings.toml
+            ~/.rustup/toolchains/${{ matrix.rust }}-*
+            ~/.rustup/update-hashes/${{ matrix.rust }}-*
+          key: test-toolchain-os_${{ runner.os }}-rust_${{ matrix.rust }}
+
       - name: Install toolchain
         id: toolchain
         uses: actions-rs/toolchain@v1
@@ -167,30 +187,25 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v1
+      # NOTE: triple-buffer's dependency set does not depend on enabled features
+      - name: Cache Cargo registry and index
+        uses: actions/cache@v2
         with:
-          path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            cargo-registry
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: alljobs-deps-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: alljobs-deps
 
-      - name: Cache Cargo index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore_keys: |
-            cargo-index
-
-      - name: Cache Cargo test target directory
-        uses: actions/cache@v1
+      - name: Cache stable Cargo test target directory
+        if: github.event_name != 'schedule'
+        uses: actions/cache@v2
         with:
           path: target
-          key: cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
+          key: test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
           restore_keys: |
-            cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
-            cargo-target_test-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}
+            test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
+            test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}
 
       - name: Run basic tests
         uses: actions-rs/cargo@v1
@@ -240,23 +255,15 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v1
+      # NOTE: triple-buffer's dependency set does not depend on enabled features
+      - name: Cache Cargo registry and index
+        uses: actions/cache@v2
         with:
-          path: ~/.cargo/registry
-          key: cargo-registry-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            cargo-registry
-
-      - name: Cache Cargo index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: cargo-index-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore_keys: |
-            cargo-index
-
-      # NOTE: No target directory caching on unstable, see top comment.
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: alljobs-deps-lock_${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: alljobs-deps
 
       - name: Run basic tests
         uses: actions-rs/cargo@v1
