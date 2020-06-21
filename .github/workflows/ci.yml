@@ -122,7 +122,7 @@ jobs:
           key: alljobs-deps-lock_${{ hashFiles('**/Cargo.toml') }}
           restore-keys: alljobs-deps
 
-      # NOTE: No dependency on OS since only one is used for this step
+      # NOTE: No dependency on OS since only one is used
       - name: Cache stable Cargo check target directory
         if: github.event_name != 'schedule'
         uses: actions/cache@v2
