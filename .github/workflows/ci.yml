@@ -129,7 +129,7 @@ jobs:
         with:
           path: target
           key: lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore_keys: |
+          restore-keys: |
             lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
             lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}
 
@@ -203,7 +203,7 @@ jobs:
         with:
           path: target
           key: test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
-          restore_keys: |
+          restore-keys: |
             test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
             test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}
 
