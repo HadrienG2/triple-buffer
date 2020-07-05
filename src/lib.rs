@@ -76,7 +76,7 @@
 
 #![deny(missing_debug_implementations, missing_docs)]
 
-use crossbeam_utils::CachePadded;
+use cache_padded::CachePadded;
 
 use std::{
     cell::UnsafeCell,
