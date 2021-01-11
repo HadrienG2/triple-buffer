@@ -93,10 +93,6 @@ use std::{
 /// submits regular updates, and the consumer accesses the latest available
 /// value whenever it feels like it.
 ///
-/// The input and output fields of this struct are what producers and consumers
-/// actually use in practice. They can safely be moved away from the
-/// TripleBuffer struct after construction, and are further documented below.
-///
 #[derive(Debug)]
 pub struct TripleBuffer<T: Send> {
     /// Input object used by producers to send updates
@@ -108,6 +104,11 @@ pub struct TripleBuffer<T: Send> {
 //
 impl<T: Clone + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
+    //
+    // FIXME: After spending some time thinking about this further, I reached
+    //        the conclusion that clippy was right after all. But since this is
+    //        a breaking change, I'm keeping that for the next major release.
+    //
     #[allow(clippy::needless_pass_by_value)]
     pub fn new(initial: T) -> Self {
         Self::new_impl(|| initial.clone())
@@ -141,12 +142,22 @@ impl<T: Send> TripleBuffer<T> {
     }
 
     /// Extract input and output of the triple buffer
+    //
+    // NOTE: Although it would be nicer to directly return `Input` and `Output`
+    //       from `new()`, the `split()` design gives some API evolution
+    //       headroom towards future allocation-free modes of operation where
+    //       the SharedState is a static variable, or a stack-allocated variable
+    //       used through scoped threads or other unsafe thread synchronization.
+    //
+    //       See https://github.com/HadrienG2/triple-buffer/issues/8 .
+    //
     pub fn split(self) -> (Input<T>, Output<T>) {
         (self.input, self.output)
     }
 }
 //
-// The Clone and PartialEq traits are used internally for testing.
+// The Clone and PartialEq traits are used internally for testing and I don't
+// want to commit to supporting them publicly for now.
 //
 #[doc(hidden)]
 impl<T: Clone + Send> Clone for TripleBuffer<T> {
