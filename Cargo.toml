@@ -1,6 +1,6 @@
 [package]
 name = "triple_buffer"
-version = "5.0.5"
+version = "5.0.6"
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
 description = "An implementation of triple buffering, useful for sharing frequently updated data between threads"
 documentation = "https://docs.rs/triple_buffer/"
@@ -12,9 +12,8 @@ license = "MPL-2.0"
 edition = "2018"
 
 [features]
-# Enable full access to the read and write buffers. This has a slight cost in
-# terms of synchronization performance, as we need to account for more possible
-# interactions, so you should only do this when you intend to use the interface.
+# This feature flag is kept around for SemVer compatibility, but does not serve
+# any useful purpose since triple-buffer 5.0.6.
 raw = []
 
 [badges]
@@ -25,6 +24,3 @@ cache-padded = "1.1"
 
 [dev-dependencies]
 testbench = "0.7"
-
-[package.metadata.docs.rs]
-all-features = true

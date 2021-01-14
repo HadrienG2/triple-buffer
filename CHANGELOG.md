@@ -8,8 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes in the pipeline at the moment._
+### Added
 
+- As a result of the bugfix mentioned below, there is no performance motivation
+  to gate `raw` features behind a feature flag, so those features are now
+  available by default without a `raw_` prefix. Usage of the `raw_` prefix and
+  the `raw` feature flag is deprecated and these may be removed in a future
+  major release, but it doesn't harm to keep them indefinitely for now.
+
+### Fixed
+
+- Removed a possibility of data race that was not observed on current hardware,
+  but could be triggered by future hardware or compiler evolutions. See
+  https://github.com/HadrienG2/triple-buffer/issues/14 .
 
 ## [5.0.5] - 2020-07-05
 
