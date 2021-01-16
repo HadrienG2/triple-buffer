@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Benchmarks now use `criterion`, and have been significantly cleaned up along
   the way. They are now more extensive and more reliable.
+- Moved MSRV to Rust 1.36 because we now use crossbeam for testing, which
+  requires that much. The crate itself should still support Rust 1.34 for now,
+  but we cannot test that it continues doing so...
 
 ### Fixed
 
