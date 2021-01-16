@@ -147,11 +147,11 @@ do not check the lock-free/synchronization part. You run them as follows:
 
     $ cargo test
 
-Then we have a concurrent test where a reader thread continuously observes the
-values from a rate-limited writer thread, and makes sure that he can see every
-single update without any incorrect value slipping in the middle.
+Then we have concurrent tests where, for example, a reader thread continuously
+observes the values from a rate-limited writer thread, and makes sure that he
+can see every single update without any incorrect value slipping in the middle.
 
-This test is more important, but it is also harder to run because one must first
+These tests are more important, but also harder to run because one must first
 check some assumptions:
 
 - The testing host must have at least 2 physical CPU cores to test all possible
@@ -159,42 +159,55 @@ check some assumptions:
 - No other code should be eating CPU in the background. Including other tests.
 - As the proper writing rate is system-dependent, what is configured in this
   test may not be appropriate for your machine.
+- You must test in release modes, as compiler optimizations tend to create more
+  opportunities for race conditions.
 
-Taking this and the relatively long run time (~10-20 s) into account, this test
-is ignored by default.
-
-Finally, we have benchmarks, which allow you to test how well the code is
-performing on your machine. Because cargo bench has not yet landed in Stable
-Rust, these benchmarks masquerade as tests, which make them a bit unpleasant to
-run. I apologize for the inconvenience.
-
-To run the concurrent test and the benchmarks, make sure no one is eating CPU in
-the background and do:
+Taking this and the relatively long run time (~10-20 s) into account, the
+concurrent tests are ignored by default. To run them, make sure nothing is
+eating CPU in the background and do:
 
     $ cargo test --release -- --ignored --nocapture --test-threads=1
 
-Here is a guide to interpreting the benchmark results:
+Finally, we have benchmarks, which allow you to test how well the code is
+performing on your machine. We are now using `criterion` for said benchmarks,
+which seems that to run them, you can simply do:
 
-* `clean_read` measures the triple buffer readout time when the data has not
-  changed. It should be extremely fast (a couple of CPU clock cycles).
-* `write` measures the amount of time it takes to write data in the triple
-  buffer when no one is reading.
-* `write_and_dirty_read` performs a write as before, immediately followed by a
-  sequential read. To get the dirty read performance, substract the write time
-  from that result. Writes and dirty read should take comparable time.
-* `concurrent_write` measures the write performance when a reader is
-  continuously reading. Expect significantly worse performance: lock-free
-  techniques can help against contention, but are not a panacea.
-* `concurrent_read` measures the read performance when a writer is continuously
-  writing. Again, a significant hit is to be expected.
+    $ cargo bench
 
-On an Intel Xeon E5-1620 v3 @ 3.50GHz, typical results are as follows:
+The benchmarks exercise the worst-case scenario of `u8` payloads, where
+synchronization overhead dominates as the cost of reading and writing the
+actual data is only 1 cycle. In real-world use cases, you will spend more time
+updating buffers and less time synchronizing them.
 
-* Write: 7.8 ns
-* Clean read: 1.8 ns
-* Dirty read: 9.3 ns
-* Concurrent write: 45 ns
-* Concurrent read: 126 ns
+However, due to the artificial nature of microbenchmarking, the benchmarks must
+exercise two scenarios which are respectively overly optimistic and overly
+pessimistic:
+
+1. In sequential mode, the buffer input and output reside on the same CPU core,
+   which underestimates the overhead of transferring modified cache lines from
+   the L1 cache of the source thread to that of the destination thread.
+   * This is not as bad as it sounds, because you will pay this sort of overhead
+     no matter what kind of thread synchronization primitive you use, so we're
+     not hiding `triple-buffer` specific overheads here.
+2. In contended mode, the benchmarked half of the triple buffer is operating
+   under maximal load from the other half, which is much higher than what is
+   actually going to be observed in real-world workloads.
+   * In this configuration, what you're essentially measuring is the performance
+     of your CPU's cache line locking protocol and inter-CPU core data
+     transfers under the shared data access pattern of `triple-buffer`.
+
+Therefore, consider the benchmark's timings as orders of magnitude of the best
+and the worst that you can expect from `triple-buffer`, where actual performance
+will be somewhere inbetween depending on your workload.
+
+On an Intel Core i3-3220 CPU @ 3.30GHz, typical results are as follows:
+
+* Clean read: 0.9 ns
+* Write: 6.9 ns
+* Write + dirty read: 19.6 ns
+* Dirty read (estimated): 12.7 ns
+* Contended write: 60.8 ns
+* Contended read: 59.2 ns
 
 
 ## License
