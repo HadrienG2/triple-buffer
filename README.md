@@ -159,7 +159,7 @@ check some assumptions:
 - No other code should be eating CPU in the background. Including other tests.
 - As the proper writing rate is system-dependent, what is configured in this
   test may not be appropriate for your machine.
-- You must test in release modes, as compiler optimizations tend to create more
+- You must test in release mode, as compiler optimizations tend to create more
   opportunities for race conditions.
 
 Taking this and the relatively long run time (~10-20 s) into account, the
@@ -174,7 +174,7 @@ which seems that to run them, you can simply do:
 
     $ cargo bench
 
-The benchmarks exercise the worst-case scenario of `u8` payloads, where
+These benchmarks exercise the worst-case scenario of `u8` payloads, where
 synchronization overhead dominates as the cost of reading and writing the
 actual data is only 1 cycle. In real-world use cases, you will spend more time
 updating buffers and less time synchronizing them.
@@ -183,22 +183,24 @@ However, due to the artificial nature of microbenchmarking, the benchmarks must
 exercise two scenarios which are respectively overly optimistic and overly
 pessimistic:
 
-1. In sequential mode, the buffer input and output reside on the same CPU core,
+1. In uncontended mode, the buffer input and output reside on the same CPU core,
    which underestimates the overhead of transferring modified cache lines from
-   the L1 cache of the source thread to that of the destination thread.
-   * This is not as bad as it sounds, because you will pay this sort of overhead
-     no matter what kind of thread synchronization primitive you use, so we're
-     not hiding `triple-buffer` specific overheads here.
+   the L1 cache of the source CPU to that of the destination CPU.
+   * This is not as bad as it sounds, because you will pay this overhead no
+     matter what kind of thread synchronization primitive you use, so we're not
+     hiding `triple-buffer` specific overhead here. All you need to do is to
+     ensure that when comparing against another synchronization primitive, that
+     primitive is benchmarked in a similar way.
 2. In contended mode, the benchmarked half of the triple buffer is operating
-   under maximal load from the other half, which is much higher than what is
+   under maximal load from the other half, which is much more busy than what is
    actually going to be observed in real-world workloads.
    * In this configuration, what you're essentially measuring is the performance
      of your CPU's cache line locking protocol and inter-CPU core data
      transfers under the shared data access pattern of `triple-buffer`.
 
-Therefore, consider the benchmark's timings as orders of magnitude of the best
+Therefore, consider these benchmarks' timings as orders of magnitude of the best
 and the worst that you can expect from `triple-buffer`, where actual performance
-will be somewhere inbetween depending on your workload.
+will be somewhere inbetween these two numbers depending on your workload.
 
 On an Intel Core i3-3220 CPU @ 3.30GHz, typical results are as follows:
 

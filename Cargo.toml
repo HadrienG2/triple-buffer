@@ -1,5 +1,17 @@
 [package]
 name = "triple_buffer"
+#
+# Release checklist:
+#
+# - Check all TODOs, FIXMEs, unwraps, and expects: can I do better now?
+# - Cross-check all public API documentation, update as needed.
+# - Update changelog.
+# - Update version number in Cargo.toml
+# - Roll an annotated git tag
+# - Push it, make sure both the tag and master pass CI.
+# - Cargo publish.
+# - Add a github release
+#
 version = "5.0.6"
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
 description = "An implementation of triple buffering, useful for sharing frequently updated data between threads"

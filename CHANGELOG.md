@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes in the pipeline at the moment._
+
+
+## [5.0.6] - 2021-01-16
+
 ### Added
 
 - As a result of the bugfix mentioned below, there is no performance motivation
@@ -247,7 +252,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.5...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.6...HEAD
+[5.0.4]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.5...v5.0.6
 [5.0.4]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.4...v5.0.5
 [5.0.4]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.3...v5.0.4
 [5.0.3]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.2...v5.0.3

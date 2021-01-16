@@ -526,13 +526,13 @@ impl<T: PartialEq + Send> SharedState<T> {
 //
 unsafe impl<T: Send> Sync for SharedState<T> {}
 
-/// Index types used for triple buffering
-///
-/// These types are used to index into triple buffers. In addition, the
-/// BackBufferInfo type is actually a bitfield, whose third bit (numerical
-/// value: 4) is set to 1 to indicate that the producer published an update into
-/// the back-buffer, and reset to 0 when the consumer fetches the update.
-///
+// Index types used for triple buffering
+//
+// These types are used to index into triple buffers. In addition, the
+// BackBufferInfo type is actually a bitfield, whose third bit (numerical
+// value: 4) is set to 1 to indicate that the producer published an update into
+// the back-buffer, and reset to 0 when the consumer fetches the update.
+//
 type BufferIndex = u8;
 type BackBufferInfo = BufferIndex;
 //
@@ -913,7 +913,7 @@ mod tests {
                 for new_value in 1..=TEST_WRITE_COUNT {
                     match buf_input.input_buffer().get() {
                         Racey::Consistent(curr_value) => {
-                            assert!(curr_value <= TEST_WRITE_COUNT);
+                            assert!(curr_value <= new_value);
                         }
                         Racey::Inconsistent => {
                             panic!("Inconsistent state exposed by the buffer!");
