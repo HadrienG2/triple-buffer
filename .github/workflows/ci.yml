@@ -28,9 +28,6 @@ jobs:
   lints:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
