@@ -21,62 +21,15 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  # Formatter output doesn't depend on the operating system or cargo features,
+  # Auto-format, clippy and rustc lints do not depend on the operating system
   # and only need to be tested on the latest supported release of each CI run.
-  format:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-
-      # NOTE: No need to put OS and rust version in key since only one is used
-      - name: Cache stable toolchain
-        if: github.event_name != 'schedule'
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.rustup/settings.toml
-            ~/.rustup/toolchains/stable-*
-            ~/.rustup/update-hashes/stable-*
-          key: format-toolchain
-
-      - name: Install stable toolchain
-        if: github.event_name != 'schedule'
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-          components: rustfmt
-
-      - name: Install nightly toolchain
-        if: github.event_name == 'schedule'
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-          components: rustfmt
-
-      - name: Check format
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-
-
-  # Clippy and rustc lints depend on cargo features, but not on the operating
-  # system. We don't care about warnings on the minimum supported Rust version,
-  # only about building and running correctly.
+  # We don't care about warnings on the minimum supported Rust version, only
+  # about building and running correctly.
   lints:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        features:
-          - ''
-          - raw
 
     steps:
       - name: Checkout sources
@@ -101,7 +54,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-          components: clippy
+          components: rustfmt, clippy
 
       - name: Install nightly toolchain
         if: github.event_name == 'schedule'
@@ -110,9 +63,14 @@ jobs:
           profile: minimal
           toolchain: nightly
           override: true
-          components: clippy
+          components: rustfmt, clippy
 
-      # NOTE: triple-buffer's dependency set does not depend on enabled features
+      - name: Check format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
       - name: Cache Cargo registry and index
         uses: actions/cache@v2
         with:
@@ -128,25 +86,23 @@ jobs:
         uses: actions/cache@v2
         with:
           path: target
-          key: lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
+          key: lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-lock_${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
             lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}
 
       - name: Type-check the program
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --features "${{ matrix.features }}"
 
       - name: Check clippy lints
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --features "${{ matrix.features }}" -- -D warnings
+          args: -- -D warnings
 
 
-  # Run the tests on all supported OSes and Rust versions, for all features
+  # Run the tests on all supported OSes and Rust versions
   test-stable:
     if: github.event_name != 'schedule'
 
@@ -161,9 +117,6 @@ jobs:
         rust:
           - stable
           - 1.36.0  # Minimum supported Rust version
-        features:
-          - ''
-          - raw
 
     steps:
       - name: Checkout sources
@@ -187,7 +140,6 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      # NOTE: triple-buffer's dependency set does not depend on enabled features
       - name: Cache Cargo registry and index
         uses: actions/cache@v2
         with:
@@ -202,22 +154,20 @@ jobs:
         uses: actions/cache@v2
         with:
           path: target
-          key: test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}-lock_${{ hashFiles('**/Cargo.toml') }}
+          key: test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-lock_${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-features_${{ matrix.features }}
             test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}
 
       - name: Run basic tests
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features "${{ matrix.features }}"
 
       - name: Run concurrent tests and benchmarks
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features "${{ matrix.features }}" --release -- --ignored --nocapture --test-threads=1
+          args: --release -- --ignored --nocapture --test-threads=1
 
 
   # Variant of the test-stable job for unstable periodical builds
@@ -239,9 +189,6 @@ jobs:
         rust:
           - beta
           - nightly
-        features:
-          - ''
-          - raw
 
     steps:
       - name: Checkout sources
@@ -255,7 +202,6 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      # NOTE: triple-buffer's dependency set does not depend on enabled features
       - name: Cache Cargo registry and index
         uses: actions/cache@v2
         with:
@@ -269,10 +215,9 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features "${{ matrix.features }}"
 
       - name: Run concurrent tests and benchmarks
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features "${{ matrix.features }}" --release -- --ignored --nocapture --test-threads=1
+          args: --release -- --ignored --nocapture --test-threads=1
