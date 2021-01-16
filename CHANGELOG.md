@@ -16,11 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `raw` feature flag is deprecated and these may be removed in a future
   major release, but it doesn't harm to keep them indefinitely for now.
 
+### Changed
+
+- Benchmarks now use `criterion`, and have been significantly cleaned up along
+  the way. They are now more extensive and more reliable.
+
 ### Fixed
 
 - Removed a possibility of data race that was not observed on current hardware,
   but could be triggered by future hardware or compiler evolutions. See
   https://github.com/HadrienG2/triple-buffer/issues/14 .
+
 
 ## [5.0.5] - 2020-07-05
 
