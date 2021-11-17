@@ -160,7 +160,7 @@ jobs:
         with:
           command: test
 
-      - name: Run concurrent tests and benchmarks
+      - name: Run concurrent tests
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -213,7 +213,7 @@ jobs:
         with:
           command: test
 
-      - name: Run concurrent tests and benchmarks
+      - name: Run concurrent tests
         uses: actions-rs/cargo@v1
         with:
           command: test
