@@ -113,7 +113,7 @@ jobs:
           - macos-latest
         rust:
           - stable
-          - 1.44.0  # Minimum supported Rust version
+          - 1.46.0  # Minimum supported Rust version
 
     steps:
       - name: Checkout sources
