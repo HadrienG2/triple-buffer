@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes in the pipeline at the moment._
+- Latest dependency versions require Rust 1.44.
 
 
 ## [5.0.6] - 2021-01-16

@@ -3,7 +3,7 @@
 [![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)](https://crates.io/crates/triple_buffer)
 [![On docs.rs](https://docs.rs/triple_buffer/badge.svg)](https://docs.rs/triple_buffer/)
 [![Continuous Integration](https://github.com/HadrienG2/triple-buffer/workflows/Continuous%20Integration/badge.svg)](https://github.com/HadrienG2/triple-buffer/actions?query=workflow%3A%22Continuous+Integration%22)
-![Requires rustc 1.36+](https://img.shields.io/badge/rustc-1.36+-red.svg)
+![Requires rustc 1.44+](https://img.shields.io/badge/rustc-1.44+-red.svg)
 
 
 ## What is this?

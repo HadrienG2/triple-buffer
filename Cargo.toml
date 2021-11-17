@@ -22,6 +22,7 @@ keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
 license = "MPL-2.0"
 edition = "2018"
+rust-version = "1.44"
 
 [features]
 # This feature flag is kept around for SemVer compatibility, but does not serve
