@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Latest dependency versions require Rust 1.46.
+_No unreleased change in the pipeline at the moment_
+
+
+## [6.0.0] - 2021-12-18
+
+- Latest dependency versions require Rust 1.46, we bump MSRV accordingly.
 - ...and since that's a breaking change, I'm also flushing the breaking change
   pipeline along the way:
     * TripleBuffer::new now takes a reference to its input.
@@ -256,7 +261,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.6...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v6.0.0...HEAD
+[6.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.6...v6.0.0
 [5.0.6]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.5...v5.0.6
 [5.0.5]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.4...v5.0.5
 [5.0.4]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.3...v5.0.4
