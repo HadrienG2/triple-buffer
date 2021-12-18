@@ -3,7 +3,6 @@ name = "triple_buffer"
 #
 # Release checklist:
 #
-# - Check all TODOs, FIXMEs, unwraps, and expects: can I do better now?
 # - Cross-check all public API documentation, update as needed
 # - Update changelog
 # - Update version number in Cargo.toml

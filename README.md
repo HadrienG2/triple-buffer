@@ -19,7 +19,7 @@ The simplest way to use it is as follows:
 
 ```rust
 // Create a triple buffer:
-let buf = TripleBuffer::new(0);
+let buf = TripleBuffer::new(&0);
 
 // Split it into an input and output interface, to be respectively sent to
 // the producer thread and the consumer thread:
@@ -42,7 +42,7 @@ and to precisely control when updates are propagated:
 ```rust
 // Create and split a triple buffer
 use triple_buffer::TripleBuffer;
-let buf = TripleBuffer::new(String::with_capacity(42));
+let buf = TripleBuffer::new(&String::with_capacity(42));
 let (mut buf_input, mut buf_output) = buf.split();
 
 // Mutate the input buffer in place

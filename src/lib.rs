@@ -15,7 +15,7 @@
 //! ```
 //! // Create a triple buffer
 //! use triple_buffer::TripleBuffer;
-//! let buf = TripleBuffer::new(0);
+//! let buf = TripleBuffer::new(&0);
 //!
 //! // Split it into an input and output interface, to be respectively sent to
 //! // the producer thread and the consumer thread
@@ -38,7 +38,7 @@
 //! ```
 //! // Create and split a triple buffer
 //! use triple_buffer::TripleBuffer;
-//! let buf = TripleBuffer::new(String::with_capacity(42));
+//! let buf = TripleBuffer::new(&String::with_capacity(42));
 //! let (mut buf_input, mut buf_output) = buf.split();
 //!
 //! // Mutate the input buffer in place
@@ -97,13 +97,7 @@ pub struct TripleBuffer<T: Send> {
 //
 impl<T: Clone + Send> TripleBuffer<T> {
     /// Construct a triple buffer with a certain initial value
-    //
-    // FIXME: After spending some time thinking about this further, I reached
-    //        the conclusion that clippy was right after all. But since this is
-    //        a breaking change, I'm keeping that for the next major release.
-    //
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn new(initial: T) -> Self {
+    pub fn new(initial: &T) -> Self {
         Self::new_impl(|| initial.clone())
     }
 }
@@ -556,7 +550,7 @@ mod tests {
     #[test]
     fn initial_state() {
         // Let's create a triple buffer
-        let mut buf = TripleBuffer::new(42);
+        let mut buf = TripleBuffer::new(&42);
         check_buf_state(&mut buf, false);
         assert_eq!(*buf.output.read(), 42);
     }
@@ -589,7 +583,7 @@ mod tests {
     #[test]
     fn partial_eq() {
         // Create a triple buffer
-        let buf = TripleBuffer::new("test");
+        let buf = TripleBuffer::new(&"test");
 
         // Check that it is equal to itself
         assert_eq!(buf, buf);
@@ -597,7 +591,7 @@ mod tests {
         // Make another buffer with different contents. As buffer creation is
         // deterministic, this should only have an impact on the shared state,
         // but the buffers should nevertheless be considered different.
-        let buf2 = TripleBuffer::new("taste");
+        let buf2 = TripleBuffer::new(&"taste");
         assert_eq!(buf.input.input_idx, buf2.input.input_idx);
         assert_eq!(buf.output.output_idx, buf2.output.output_idx);
         assert!(buf != buf2);
@@ -606,7 +600,7 @@ mod tests {
         // also lead two TripleBuffers to be considered different (this test
         // technically creates an invalid TripleBuffer state, but it's the only
         // way to check that the PartialEq impl is exhaustive)
-        let mut buf3 = TripleBuffer::new("test");
+        let mut buf3 = TripleBuffer::new(&"test");
         assert_eq!(buf, buf3);
         let old_input_idx = buf3.input.input_idx;
         buf3.input.input_idx = buf3.output.output_idx;
@@ -641,7 +635,7 @@ mod tests {
     #[test]
     fn clone() {
         // Create a triple buffer
-        let mut buf = TripleBuffer::new(4.2);
+        let mut buf = TripleBuffer::new(&4.2);
 
         // Put it in a nontrivial state
         unsafe {
@@ -687,7 +681,7 @@ mod tests {
     #[test]
     fn swaps() {
         // Create a new buffer, and a way to track any changes to it
-        let mut buf = TripleBuffer::new([123, 456]);
+        let mut buf = TripleBuffer::new(&[123, 456]);
         let old_buf = buf.clone();
         let old_input_idx = old_buf.input.input_idx;
         let old_shared = &old_buf.input.shared;
@@ -740,7 +734,7 @@ mod tests {
     #[test]
     fn sequential_write() {
         // Let's create a triple buffer
-        let mut buf = TripleBuffer::new(false);
+        let mut buf = TripleBuffer::new(&false);
 
         // Back up the initial buffer state
         let old_buf = buf.clone();
@@ -767,7 +761,7 @@ mod tests {
     #[test]
     fn sequential_read() {
         // Let's create a triple buffer and write into it
-        let mut buf = TripleBuffer::new(1.0);
+        let mut buf = TripleBuffer::new(&1.0);
         buf.input.write(4.2);
 
         // Test readout from dirty (freshly written) triple buffer
@@ -814,7 +808,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 100_000_000;
 
         // This is the buffer that our reader and writer will share
-        let buf = TripleBuffer::new(RaceCell::new(0));
+        let buf = TripleBuffer::new(&RaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which increments a shared value in a loop,
@@ -860,7 +854,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 625;
 
         // This is the buffer that our reader and writer will share
-        let buf = TripleBuffer::new(RaceCell::new(0));
+        let buf = TripleBuffer::new(&RaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which slowly increments a shared value,
@@ -903,7 +897,7 @@ mod tests {
         const TEST_WRITE_COUNT: usize = 100_000_000;
 
         // This is the buffer that our reader and writer will share
-        let buf = TripleBuffer::new(RaceCell::new(0));
+        let buf = TripleBuffer::new(&RaceCell::new(0));
         let (mut buf_input, mut buf_output) = buf.split();
 
         // Concurrently run a writer which increments a shared value in a loop,
