@@ -13,6 +13,8 @@ _No unreleased change in the pipeline at the moment_
 
 ## [6.0.0] - 2021-12-18
 
+### Changed
+
 - Latest dependency versions require Rust 1.46, we bump MSRV accordingly.
 - ...and since that's a breaking change, I'm also flushing the breaking change
   pipeline along the way:
