@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Latest dependency versions require Rust 1.46.
-- TripleBuffer::new now takes a reference to the input, which allows us to
-  finally have fully FIXME-free code with no clippy silencing.
+- ...and since that's a breaking change, I'm also flushing the breaking change
+  pipeline along the way:
+    * TripleBuffer::new now takes a reference to its input.
+    * The deprecated `raw` feature is now removed.
 
 
 ## [5.0.6] - 2021-01-16
