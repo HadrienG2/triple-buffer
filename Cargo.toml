@@ -23,11 +23,6 @@ license = "MPL-2.0"
 edition = "2018"
 rust-version = "1.46"
 
-[features]
-# This feature flag is kept around for SemVer compatibility, but does not serve
-# any useful purpose since triple-buffer 5.0.6.
-raw = []
-
 [badges]
 maintenance = { status = "passively-maintained" }
 

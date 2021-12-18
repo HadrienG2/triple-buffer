@@ -290,30 +290,6 @@ impl<T: Send> Input<T> {
         // Tell whether we have overwritten unread data
         former_back_info & BACK_DIRTY_BIT != 0
     }
-
-    /// Deprecated alias to `input_buffer()`, please use that method instead
-    #[cfg(any(feature = "raw", test))]
-    #[deprecated(
-        since = "5.0.5",
-        note = "The \"raw\" feature is deprecated as the performance \
-                optimization that motivated it turned out to be incorrect. \
-                All functionality is now available without using feature flags."
-    )]
-    pub fn raw_input_buffer(&mut self) -> &mut T {
-        self.input_buffer()
-    }
-
-    /// Deprecated alias to `publish()`, please use that method instead
-    #[cfg(any(feature = "raw", test))]
-    #[deprecated(
-        since = "5.0.5",
-        note = "The \"raw\" feature is deprecated as the performance \
-                optimization that motivated it turned out to be incorrect. \
-                All functionality is now available without using feature flags."
-    )]
-    pub fn raw_publish(&mut self) -> bool {
-        self.publish()
-    }
 }
 
 /// Consumer interface to the triple buffer
@@ -426,30 +402,6 @@ impl<T: Send> Output<T> {
 
         // Tell whether an update was carried out
         updated
-    }
-
-    /// Deprecated alias to `output_buffer()`, please use that method instead
-    #[cfg(any(feature = "raw", test))]
-    #[deprecated(
-        since = "5.0.5",
-        note = "The \"raw\" feature is deprecated as the performance \
-                optimization that motivated it turned out to be incorrect. \
-                All functionality is now available without using feature flags."
-    )]
-    pub fn raw_output_buffer(&mut self) -> &mut T {
-        self.output_buffer()
-    }
-    /// Deprecated alias to `update()`, please use that method instead
-    #[cfg(any(feature = "raw", test))]
-    #[deprecated(
-        since = "5.0.5",
-        note = "The \"raw\" feature is deprecated as the performance \
-                optimization that motivated it turned out to be incorrect. \
-                All functionality is now available without using feature flags."
-    )]
-    #[cfg(any(feature = "raw", test))]
-    pub fn raw_update(&mut self) -> bool {
-        self.update()
     }
 }
 
