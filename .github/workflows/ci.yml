@@ -161,6 +161,8 @@ jobs:
           command: test
 
       - name: Run concurrent tests
+        # FIXME: macOS runners are too overloaded for concurrent testing
+        if: runner.os != 'macos-latest'
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -215,6 +217,8 @@ jobs:
           command: test
 
       - name: Run concurrent tests
+        # FIXME: macOS runners are too overloaded for concurrent testing
+        if: runner.os != 'macos-latest'
         uses: actions-rs/cargo@v1
         with:
           command: test
