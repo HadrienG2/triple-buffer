@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       # NOTE: No need to put OS and rust version in key since only one is used
       - name: Cache stable toolchain
@@ -117,7 +117,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Cache stable toolchain
         if: github.event_name != 'schedule'
@@ -192,7 +192,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install toolchain
         id: toolchain
