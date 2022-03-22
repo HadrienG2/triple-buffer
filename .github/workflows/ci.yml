@@ -35,7 +35,7 @@ jobs:
       # NOTE: No need to put OS and rust version in key since only one is used
       - name: Cache stable toolchain
         if: github.event_name != 'schedule'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.rustup/settings.toml
@@ -69,7 +69,7 @@ jobs:
           args: --all -- --check
 
       - name: Cache Cargo registry and index
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/git
@@ -80,7 +80,7 @@ jobs:
       # NOTE: No dependency on OS since only one is used
       - name: Cache stable Cargo check target directory
         if: github.event_name != 'schedule'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: target
           key: lints-target-rust_${{ steps.toolchain.outputs.rustc_hash }}-lock_${{ hashFiles('**/Cargo.toml') }}
@@ -121,7 +121,7 @@ jobs:
 
       - name: Cache stable toolchain
         if: github.event_name != 'schedule'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.rustup/settings.toml
@@ -138,7 +138,7 @@ jobs:
           override: true
 
       - name: Cache Cargo registry and index
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/git
@@ -148,7 +148,7 @@ jobs:
 
       - name: Cache stable Cargo test target directory
         if: github.event_name != 'schedule'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: target
           key: test-target-os_${{ runner.os }}-rust_${{ steps.toolchain.outputs.rustc_hash }}-lock_${{ hashFiles('**/Cargo.toml') }}
@@ -203,7 +203,7 @@ jobs:
           override: true
 
       - name: Cache Cargo registry and index
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/git
