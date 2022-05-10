@@ -67,16 +67,17 @@
 //! output.push_str("world!");
 //! ```
 
+#![cfg_attr(not(test), no_std)]
 #![deny(missing_debug_implementations, missing_docs)]
+
+extern crate alloc;
 
 use cache_padded::CachePadded;
 
-use std::{
+use alloc::sync::Arc;
+use core::{
     cell::UnsafeCell,
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicU8, Ordering},
 };
 
 /// A triple buffer, useful for nonblocking and thread-safe data sharing
