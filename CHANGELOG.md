@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _No unreleased change in the pipeline at the moment_
 
 
+## [6.1.0] - 2022-10-05
+
+### Added
+
+- `triple-buffer` is now usable in `no_std` contexts where an implementation of
+  the `alloc` crate is available.
+
+
 ## [6.0.0] - 2021-12-18
 
 ### Changed
@@ -263,7 +271,8 @@ _No unreleased change in the pipeline at the moment_
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v6.0.0...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v6.1.0...HEAD
+[6.1.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.6...v6.0.0
 [5.0.6]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.5...v5.0.6
 [5.0.5]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.4...v5.0.5
