@@ -18,19 +18,18 @@ useful for the following class of thread synchronization problems:
 The simplest way to use it is as follows:
 
 ```rust
-// Create a triple buffer:
-let buf = TripleBuffer::new(&0);
+// Create a triple buffer
+use triple_buffer::triple_buffer;
+let (mut buf_input, mut buf_output) = triple_buffer(&0);
 
-// Split it into an input and output interface, to be respectively sent to
-// the producer thread and the consumer thread:
-let (mut buf_input, mut buf_output) = buf.split();
+// The producer thread can move a value into the buffer at any time
+let producer = std::thread::spawn(move || buf_input.write(42));
 
-// The producer can move a value into the buffer at any time
-buf_input.write(42);
-
-// The consumer can access the latest value from the producer at any time
-let latest_value_ref = buf_output.read();
-assert_eq!(*latest_value_ref, 42);
+// The consumer thread can read the latest value at any time
+let consumer = std::thread::spawn(move || {
+    let latest = buf_output.read();
+    assert!(*latest == 42 || *latest == 0);
+});
 ```
 
 In situations where moving the original value away and being unable to
@@ -41,9 +40,8 @@ and to precisely control when updates are propagated:
 
 ```rust
 // Create and split a triple buffer
-use triple_buffer::TripleBuffer;
-let buf = TripleBuffer::new(&String::with_capacity(42));
-let (mut buf_input, mut buf_output) = buf.split();
+use triple_buffer::triple_buffer;
+let (mut buf_input, mut buf_output) = triple_buffer(&String::with_capacity(42));
 
 // Mutate the input buffer in place
 {

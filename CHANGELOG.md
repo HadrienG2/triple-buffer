@@ -8,7 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased change in the pipeline at the moment_
+### Added
+
+- A `triple_buffer()` shorthand is now available for the common
+  `TripleBuffer::new().split()` pattern.
+
+### Changed
+
+- The documentation example now features multi-threading to clarify ownership.
 
 
 ## [6.1.0] - 2022-10-05

@@ -14,19 +14,20 @@
 //!
 //! ```
 //! // Create a triple buffer
-//! use triple_buffer::TripleBuffer;
-//! let buf = TripleBuffer::new(&0);
+//! use triple_buffer::triple_buffer;
+//! let (mut buf_input, mut buf_output) = triple_buffer(&0);
 //!
-//! // Split it into an input and output interface, to be respectively sent to
-//! // the producer thread and the consumer thread
-//! let (mut buf_input, mut buf_output) = buf.split();
+//! // The producer thread can move a value into the buffer at any time
+//! let producer = std::thread::spawn(move || buf_input.write(42));
 //!
-//! // The producer can move a value into the buffer at any time
-//! buf_input.write(42);
+//! // The consumer thread can read the latest value at any time
+//! let consumer = std::thread::spawn(move || {
+//!     let latest = buf_output.read();
+//!     assert!(*latest == 42 || *latest == 0);
+//! });
 //!
-//! // The consumer can access the latest value from the producer at any time
-//! let latest_value_ref = buf_output.read();
-//! assert_eq!(*latest_value_ref, 42);
+//! # producer.join().unwrap();
+//! # consumer.join().unwrap();
 //! ```
 //!
 //! In situations where moving the original value away and being unable to
@@ -37,9 +38,8 @@
 //!
 //! ```
 //! // Create and split a triple buffer
-//! use triple_buffer::TripleBuffer;
-//! let buf = TripleBuffer::new(&String::with_capacity(42));
-//! let (mut buf_input, mut buf_output) = buf.split();
+//! use triple_buffer::triple_buffer;
+//! let (mut buf_input, mut buf_output) = triple_buffer(&String::with_capacity(42));
 //!
 //! // Mutate the input buffer in place
 //! {
@@ -142,6 +142,11 @@ impl<T: Send> TripleBuffer<T> {
     pub fn split(self) -> (Input<T>, Output<T>) {
         (self.input, self.output)
     }
+}
+//
+/// Shorthand for `TripleBuffer::new(initial).split()`
+pub fn triple_buffer<T: Clone + Send>(initial: &T) -> (Input<T>, Output<T>) {
+    TripleBuffer::new(initial).split()
 }
 //
 // The Clone and PartialEq traits are used internally for testing and I don't
