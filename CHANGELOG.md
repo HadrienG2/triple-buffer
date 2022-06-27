@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased change in the pipeline at the moment._
+
+
+## [6.2.0] - 2022-06-27
+
 ### Added
 
 - A `triple_buffer()` shorthand is now available for the common
@@ -278,7 +283,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v6.1.0...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v6.2.0...HEAD
+[6.2.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.1.0...v6.2.0
 [6.1.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.6...v6.0.0
 [5.0.6]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.5...v5.0.6
