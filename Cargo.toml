@@ -38,7 +38,7 @@ cache-padded = "1.1"
 criterion = { version = "0.3", optional = true }
 
 [dev-dependencies]
-testbench = "0.8"
+testbench = "0.9"
 
 [lib]
 bench = false
