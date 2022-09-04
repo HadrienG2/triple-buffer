@@ -26,6 +26,10 @@ jobs:
   # We don't care about warnings on the minimum supported Rust version, only
   # about building and running correctly.
   lints:
+    # Only run on "pull_request" event for external PRs. This is to avoid
+    # duplicate builds for PRs created from internal branches.
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
+
     runs-on: ubuntu-latest
 
     steps:
@@ -57,7 +61,9 @@ jobs:
 
   # Run the tests on all supported OSes and Rust versions (main CI)
   test-contrib:
-    if: github.event_name != 'schedule'
+    # Only run on "pull_request" event for external PRs. This is to avoid
+    # duplicate builds for PRs created from internal branches.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
 
     runs-on: ${{ matrix.os }}
 
@@ -94,7 +100,7 @@ jobs:
   # FIXME: There should be a way to use conditional build matrices without
   #        duplicating the whole job recipe...
   #
-  test-unstable:
+  test-scheduled:
     if: github.event_name == 'schedule'
 
     runs-on: ${{ matrix.os }}
