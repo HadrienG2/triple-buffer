@@ -72,7 +72,7 @@
 
 extern crate alloc;
 
-use cache_padded::CachePadded;
+use crossbeam_utils::CachePadded;
 
 use alloc::sync::Arc;
 use core::{

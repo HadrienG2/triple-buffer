@@ -27,7 +27,7 @@ rust-version = "1.46"
 maintenance = { status = "passively-maintained" }
 
 [dependencies]
-cache-padded = "1.1"
+crossbeam-utils = { version = "0.8.11", default-features = false }
 #
 # plotters now requires Rust 2021, and criterion uses plotters, so criterion is
 # now incompatible with our minimal supported Rust version. We only need tests
