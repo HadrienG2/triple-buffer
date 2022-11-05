@@ -19,6 +19,7 @@ name: Continuous Integration
 
 env:
   RUSTFLAGS: -D warnings
+  MSRV: 1.46.0
 
 jobs:
   # Auto-format, clippy and rustc lints do not depend on the operating system
@@ -75,7 +76,7 @@ jobs:
           - macos-latest
         rust:
           - stable
-          - 1.46.0  # Minimum supported Rust version
+          - ${{ MSRV }}  # Minimum supported Rust version
 
     steps:
       - name: Checkout sources
@@ -114,7 +115,7 @@ jobs:
         rust:
           - beta
           - nightly
-          - 1.46.0  # Minimum supported Rust version (can be broken by deps)
+          - ${{ MSRV }}  # Minimum supported Rust version (can be broken by deps)
 
     steps:
       - name: Checkout sources
