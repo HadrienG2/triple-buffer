@@ -76,7 +76,7 @@ jobs:
           - macos-latest
         rust:
           - stable
-          - ${{ MSRV }}  # Minimum supported Rust version
+          - $MSRV  # Minimum supported Rust version
 
     steps:
       - name: Checkout sources
@@ -115,7 +115,7 @@ jobs:
         rust:
           - beta
           - nightly
-          - ${{ MSRV }}  # Minimum supported Rust version (can be broken by deps)
+          - $MSRV  # Minimum supported Rust version (can be broken by deps)
 
     steps:
       - name: Checkout sources
