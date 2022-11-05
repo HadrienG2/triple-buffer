@@ -19,7 +19,7 @@ name: Continuous Integration
 
 env:
   RUSTFLAGS: -D warnings
-  MSRV: 1.46.0
+  MSRV: 1.55.0
 
 jobs:
   # Auto-format, clippy and rustc lints do not depend on the operating system
