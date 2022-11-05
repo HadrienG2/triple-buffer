@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased change in the pipeline at the moment._
+### Changed
+
+- The `cfg-if` test dependency no longer builds with `rustc` versions older than
+  1.54 on macOS. As a result, we cannot test those older `rustc` versions on all
+  platforms anymore, so we bump the MSRV.
 
 
 ## [6.2.0] - 2022-06-27
