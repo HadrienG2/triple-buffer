@@ -35,7 +35,7 @@ crossbeam-utils = { version = "0.8.11", default-features = false }
 # criterion dependency optional. Except dev dependencies cannot be optional, so
 # we must make criterion a non-dev dependency, which it shouldn't be as it adds
 # lots of build overhead. Thus we turn the feature off by default.
-criterion = { version = "0.3", optional = true }
+criterion = { version = "0.5", optional = true }
 
 [dev-dependencies]
 testbench = "0.9"
