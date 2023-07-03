@@ -170,10 +170,8 @@ Finally, we have benchmarks, which allow you to test how well the code is
 performing on your machine. We are now using `criterion` for said benchmarks,
 which seems that to run them, you can simply do:
 
-    $ cargo bench --features criterion
-
-The `criterion` feature is optional because we need that to support older Rust
-versions, see `Cargo.toml` for details.
+    $ cargo install cargo-criterion
+    $ cargo criterion
 
 These benchmarks exercise the worst-case scenario of `u8` payloads, where
 synchronization overhead dominates as the cost of reading and writing the

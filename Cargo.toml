@@ -28,16 +28,9 @@ maintenance = { status = "passively-maintained" }
 
 [dependencies]
 crossbeam-utils = { version = "0.8.11", default-features = false }
-#
-# plotters now requires Rust 2021, and criterion uses plotters, so criterion is
-# now incompatible with our minimal supported Rust version. We only need tests
-# to check compatibility, not benchmarks, so we can resolve this by make the
-# criterion dependency optional. Except dev dependencies cannot be optional, so
-# we must make criterion a non-dev dependency, which it shouldn't be as it adds
-# lots of build overhead. Thus we turn the feature off by default.
-criterion = { version = "0.3", optional = true }
 
 [dev-dependencies]
+criterion = { version = "0.5", default-features = false }
 testbench = "0.9"
 
 [lib]

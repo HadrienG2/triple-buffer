@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `cfg-if` test dependency no longer builds with `rustc` versions older than
   1.54 on macOS. As a result, we cannot test those older `rustc` versions on all
   platforms anymore, so we bump the MSRV.
+- Moved to criterion 0.5, so we don't need the criterion feature hack anymore.
 
 
 ## [6.2.0] - 2022-06-27
