@@ -82,13 +82,18 @@ Compared to a mutex:
 - Uses a lot more memory (3x payload + 3x bytes vs 1x payload + 1 bool)
 - Does not allow in-place updates, as the producer and consumer do not access
   the same memory location
-- Should be slower if updates are rare and in-place updates are much more
-  efficient than moves, comparable or faster otherwise.
-  * Mutexes and triple buffering have comparably low overhead on the happy path
-    (checking a flag), which is systematically taken when updates are rare. In
-    this scenario, in-place updates can give mutexes a performance advantage.
-    Where triple buffering shines is when a reader often collides with a writer,
-    which is handled very poorly by mutexes.
+- Should have faster reads and slower updates, especially if in-place updates
+  are more efficient than writing a fresh copy of the data.
+  * When the data hasn't been updated, the readout transaction of triple
+    buffering only requires a memory read, no atomic operation, and it can be
+    performed in parallel with any ongoing update.
+  * When the data has been updated, the readout transaction requires an
+    infaillible atomic operation, which may or may not be faster than the
+    faillible atomic operations used by most mutex implementations.
+  * Unless your data cannot be updated in place and must always be fully
+    rewritten, the ability provided by mutexes to update data in place should
+    make updates a lot more efficient, dwarfing any performance difference
+    originating from the synchronization protocol.
 
 Compared to the read-copy-update (RCU) primitive from the Linux kernel:
 
@@ -104,7 +109,7 @@ Compared to the read-copy-update (RCU) primitive from the Linux kernel:
   payloads and refcounts that depends on the readout and update pattern)
 - Should be slower if updates are rare, faster if updates are frequent
   * The RCU's happy reader path is slightly faster (no flag to check), but its
-    update procedure is much more involved and costly.
+    update procedure is a lot more involved and costly.
 
 Compared to sending the updates on a message queue:
 
