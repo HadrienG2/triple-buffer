@@ -10,9 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Moved to criterion 0.5, so we don't need the criterion feature hack anymore,
-  but this requires bumping MSRV to 1.64. We did need an MSRV bump anyway since
-  cfg-if needs 1.54+...
+- Bumped MSRV to 1.70 owing to new dependency requirements.
 
 
 ## [6.2.0] - 2022-06-27
