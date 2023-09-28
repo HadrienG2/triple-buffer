@@ -1,5 +1,6 @@
 # Triple buffering in Rust
 
+[![MPLv2 licensed](https://img.shields.io/badge/license-MPLv2-blue.svg)](./LICENSE)
 [![On crates.io](https://img.shields.io/crates/v/triple_buffer.svg)](https://crates.io/crates/triple_buffer)
 [![On docs.rs](https://docs.rs/triple_buffer/badge.svg)](https://docs.rs/triple_buffer/)
 [![Continuous Integration](https://img.shields.io/github/actions/workflow/status/HadrienG2/triple-buffer/ci.yml?branch=master)](https://github.com/HadrienG2/triple-buffer/actions?query=workflow%3A%22Continuous+Integration%22)
