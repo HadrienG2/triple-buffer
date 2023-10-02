@@ -19,7 +19,9 @@ name: Continuous Integration
 
 env:
   RUSTFLAGS: -D warnings
-  MSRV: 1.70.0
+  MINIMAL_RUST: 1.70.0  # Minimal Supported Rust Version
+  CARGO_NET_GIT_FETCH_WITH_CLI: 1  # Workaround for windows "spurious network error".
+                                   # Try to remove it on the next MSRV bump.
 
 jobs:
   # Auto-format, clippy and rustc lints do not depend on the operating system
@@ -76,7 +78,7 @@ jobs:
           - macos-latest
         rust:
           - stable
-          - $MSRV  # Minimum supported Rust version
+          - $MINIMAL_RUST
 
     steps:
       - name: Checkout sources
@@ -115,7 +117,7 @@ jobs:
         rust:
           - beta
           - nightly
-          - $MSRV  # Minimum supported Rust version (can be broken by deps)
+          - $MINIMAL_RUST  # Can be broken by deps
 
     steps:
       - name: Checkout sources
