@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_There are no unreleased changes in the pipeline at the moment._
+
+
+## [7.0.0] - 2023-10-22
+
 ### Changed
 
 - Bumped MSRV to 1.70 owing to new dependency requirements.
@@ -285,7 +290,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v6.2.0...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v7.0.0...HEAD
+[7.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.2.0...v7.0.0
 [6.2.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.1.0...v6.2.0
 [6.1.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v5.0.6...v6.0.0

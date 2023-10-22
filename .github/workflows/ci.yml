@@ -61,6 +61,11 @@ jobs:
       - name: Check clippy lints
         run: cargo clippy -- -D warnings
 
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          rust-toolchain: manual
+
 
   # Run the tests on all supported OSes and Rust versions (main CI)
   test-contrib:
