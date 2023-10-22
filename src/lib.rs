@@ -763,7 +763,10 @@ mod tests {
     fn contended_concurrent_read_write() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
+        #[cfg(not(feature = "miri"))]
         const TEST_WRITE_COUNT: usize = 100_000_000;
+        #[cfg(feature = "miri")]
+        const TEST_WRITE_COUNT: usize = 3_000;
 
         // This is the buffer that our reader and writer will share
         let buf = TripleBuffer::new(&RaceCell::new(0));
@@ -809,7 +812,10 @@ mod tests {
     fn uncontended_concurrent_read_write() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
+        #[cfg(not(feature = "miri"))]
         const TEST_WRITE_COUNT: usize = 625;
+        #[cfg(feature = "miri")]
+        const TEST_WRITE_COUNT: usize = 200;
 
         // This is the buffer that our reader and writer will share
         let buf = TripleBuffer::new(&RaceCell::new(0));
@@ -852,7 +858,10 @@ mod tests {
     fn concurrent_bidirectional_exchange() {
         // We will stress the infrastructure by performing this many writes
         // as a reader continuously reads the latest value
+        #[cfg(not(feature = "miri"))]
         const TEST_WRITE_COUNT: usize = 100_000_000;
+        #[cfg(feature = "miri")]
+        const TEST_WRITE_COUNT: usize = 3_000;
 
         // This is the buffer that our reader and writer will share
         let buf = TripleBuffer::new(&RaceCell::new(0));
@@ -898,7 +907,7 @@ mod tests {
     /// Range check for triple buffer indexes
     #[allow(unused_comparisons)]
     fn index_in_range(idx: BufferIndex) -> bool {
-        (idx >= 0) & (idx <= 2)
+        (0..=2).contains(&idx)
     }
 
     /// Get a pointer to the target of some reference (e.g. an &, an Arc...)

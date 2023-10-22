@@ -26,6 +26,11 @@ rust-version = "1.70"
 [badges]
 maintenance = { status = "passively-maintained" }
 
+[features]
+# Adjust the test configuration (e.g. reduce problem sizes) so the tests can run
+# under Miri within a reasonable time budget.
+miri = []
+
 [dependencies]
 crossbeam-utils = { version = "0.8.11", default-features = false }
 
