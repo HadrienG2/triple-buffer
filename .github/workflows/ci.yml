@@ -92,11 +92,36 @@ jobs:
       - name: Run basic tests
         run: cargo test
 
-      - name: Run concurrent tests and benchmarks
+      - name: Run concurrent tests
         # FIXME: macOS runners are too overloaded for concurrent testing
         if: runner.os != 'macOS'
-        run: cargo test --release -- --ignored --nocapture --test-threads=1
+        run: cargo test --release -- --ignored --test-threads=1
 
+
+  # Run the tests in Miri for more thorough runtime checks
+  #
+  # Since Miri is an abstract machine and this crate contains no OS-specific
+  # code, testing on one single OS is sufficient. Per Miri documentation, Linux
+  # gets the highest-quality support, so that's our obvious pick.
+  miri:
+    # Only run on "pull_request" event for external PRs. This is to avoid
+    # duplicate builds for PRs created from internal branches.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository || github.event_name == 'schedule'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Set up toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: miri,rust-src
+          toolchain: nightly
+
+      - name: Run tests
+        run: cargo +nightly miri test --features=miri -- --include-ignored
 
   # Check compatibility with newer Rust/deps versions (scheduled CI)
   #
@@ -134,4 +159,4 @@ jobs:
       - name: Run concurrent tests and benchmarks
         # FIXME: macOS runners are too overloaded for concurrent testing
         if: runner.os != 'macOS'
-        run: cargo test --release -- --ignored --nocapture --test-threads=1
+        run: cargo test --release -- --ignored --test-threads=1
