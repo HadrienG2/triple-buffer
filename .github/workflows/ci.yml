@@ -4,33 +4,35 @@
 #   minimal supported Rust version and the current stable Rust version.
 # - Two times a month, a scheduled job makes sure that the code remains
 #   compatible and lint-free on upcoming Rust toolchains (beta and nightly).
-#
-# No caching of Rust toolchains or target directories is performed on unstable
-# runs, since those runs are rare and the caches would be invalidated inbetween
-# two of them (especially for nightly toolchains).
+
+name: Continuous Integration
 
 on:
   push:
   pull_request:
   schedule:
-    - cron: '0 0 2,16 * *'
+    - cron: '0 0 11/15 * *'
 
-name: Continuous Integration
+# Cancel existing jobs on new pushes to the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
   MINIMAL_RUST: 1.70.0  # Minimal Supported Rust Version
   CARGO_NET_GIT_FETCH_WITH_CLI: true  # Workaround for windows "spurious network error".
                                       # Try to remove it on the next MSRV bump.
 
 jobs:
-  # Auto-format, clippy and rustc lints do not depend on the operating system
-  # and only need to be tested on the latest supported release of each CI run.
+  # Format doesn't depend on configuration, and lints don't depend on the
+  # operating system since there's no OS-specific code path in this crate.
+  #
   # We don't care about warnings on the minimum supported Rust version, only
   # about building and running correctly.
-  lints:
-    # Only run on "pull_request" event for external PRs. This is to avoid
-    # duplicate builds for PRs created from internal branches.
+  format-lints:
+    # Don't run CI twice when a PR is created from a branch internal to the repo
     if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     runs-on: ubuntu-latest
@@ -53,13 +55,10 @@ jobs:
           components: rustfmt,clippy
 
       - name: Check format
-        uses: actions-rust-lang/rustfmt@v1
-
-      - name: Type-check the program
-        run: cargo check
+        run: cargo fmt --all --check
 
       - name: Check clippy lints
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
@@ -69,8 +68,8 @@ jobs:
 
   # Run the tests on all supported OSes and Rust versions (main CI)
   test-contrib:
-    # Only run on "pull_request" event for external PRs. This is to avoid
-    # duplicate builds for PRs created from internal branches.
+    # Don't run CI twice when a PR is created from a branch internal to the repo
+    # Don't run in scheduled jobs, that's what test-scheduled is for
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
 
     runs-on: ${{ matrix.os }}
@@ -101,6 +100,9 @@ jobs:
         # FIXME: macOS runners are too overloaded for concurrent testing
         if: runner.os != 'macOS'
         run: cargo test --release -- --ignored --test-threads=1
+
+      - name: Check that benchmarks build
+        run: cargo build --benches
 
 
   # Run the tests in Miri for more thorough runtime checks
@@ -147,7 +149,7 @@ jobs:
         rust:
           - beta
           - nightly
-          - $MINIMAL_RUST  # Can be broken by deps
+          - $MINIMAL_RUST  # Compatibility can be broken by deps updates
 
     steps:
       - name: Checkout sources
@@ -161,7 +163,10 @@ jobs:
       - name: Run basic tests
         run: cargo test
 
-      - name: Run concurrent tests and benchmarks
+      - name: Run concurrent tests
         # FIXME: macOS runners are too overloaded for concurrent testing
         if: runner.os != 'macOS'
         run: cargo test --release -- --ignored --test-threads=1
+
+      - name: Check that benchmarks build
+        run: cargo build --benches
