@@ -22,8 +22,11 @@ env:
   RUSTFLAGS: -D warnings
   RUSTDOCFLAGS: -D warnings
   MINIMAL_RUST: 1.70.0  # Minimal Supported Rust Version
-  CARGO_NET_GIT_FETCH_WITH_CLI: true  # Workaround for windows "spurious network error".
-                                      # Try to remove it on the next MSRV bump.
+
+  # Workarounds for windows "spurious network error".
+  # Try to remove them on the next MSRV bump.
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+  CARGO_HTTP_MULTIPLEXING: false
 
 jobs:
   # Format doesn't depend on configuration, and lints don't depend on the
