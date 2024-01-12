@@ -29,6 +29,16 @@ env:
   CARGO_HTTP_MULTIPLEXING: false
 
 jobs:
+  # Workaround for github CI dropping env var expansion in matrix strategy
+  matrix_vars:
+    runs-on: ubuntu-latest
+    outputs:
+      MINIMAL_RUST: ${{ env.MINIMAL_RUST }}
+    steps:
+      - name: Forward env var to output
+        run: echo "MINIMAL_RUST=${{ env.MINIMAL_RUST }}" >> $GITHUB_OUTPUT
+
+
   # Format doesn't depend on configuration, and lints don't depend on the
   # operating system since there's no OS-specific code path in this crate.
   #
@@ -77,6 +87,8 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    needs: matrix_vars
+
     strategy:
       matrix:
         os:
@@ -85,7 +97,7 @@ jobs:
           - macos-latest
         rust:
           - stable
-          - $MINIMAL_RUST
+          - ${{ needs.matrix_vars.outputs.MINIMAL_RUST }}
 
     steps:
       - name: Checkout sources
@@ -143,6 +155,8 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    needs: matrix_vars
+
     strategy:
       matrix:
         os:
@@ -152,7 +166,7 @@ jobs:
         rust:
           - beta
           - nightly
-          - $MINIMAL_RUST  # Compatibility can be broken by deps updates
+          - ${{ needs.matrix_vars.outputs.MINIMAL_RUST }}
 
     steps:
       - name: Checkout sources
