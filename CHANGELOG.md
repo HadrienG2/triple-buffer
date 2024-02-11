@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_There are no unreleased changes in the pipeline at the moment._
+### Changed
+
+- Bumped MSRV to 1.74 owing to new dependency requirements.
 
 
 ## [7.0.0] - 2023-10-22
