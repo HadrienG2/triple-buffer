@@ -21,7 +21,7 @@ keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
 license = "MPL-2.0"
 edition = "2018"
-rust-version = "1.70"
+rust-version = "1.74"
 
 [badges]
 maintenance = { status = "passively-maintained" }

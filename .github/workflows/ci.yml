@@ -21,7 +21,7 @@ concurrency:
 env:
   RUSTFLAGS: -D warnings
   RUSTDOCFLAGS: -D warnings
-  MINIMAL_RUST: 1.70.0  # Minimal Supported Rust Version
+  MINIMAL_RUST: 1.74.0  # Minimal Supported Rust Version
 
   # Workarounds for windows "spurious network error".
   # Try to remove them on the next MSRV bump.
