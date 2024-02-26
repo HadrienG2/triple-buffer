@@ -496,13 +496,8 @@ const BACK_DIRTY_BIT: u8 = 0b100; // Bit set by producer to signal updates
 #[cfg(test)]
 mod tests {
     use super::{BufferIndex, SharedState, TripleBuffer, BACK_DIRTY_BIT, BACK_INDEX_MASK};
-
     use std::{fmt::Debug, ops::Deref, sync::atomic::Ordering, thread, time::Duration};
-
-    use testbench::{
-        self,
-        race_cell::{RaceCell, Racey},
-    };
+    use testbench::race_cell::{RaceCell, Racey};
 
     /// Check that triple buffers are properly initialized
     #[test]
