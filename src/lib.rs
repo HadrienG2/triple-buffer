@@ -60,11 +60,15 @@
 //! // Manually fetch the buffer update from the consumer interface
 //! buf_output.update();
 //!
-//! // Acquire a mutable reference to the output buffer
-//! let output = buf_output.output_buffer();
+//! // Acquire reference to the output buffer
+//! let output = buf_output.peek_output_buffer();
+//! assert_eq!(*output, "Hello, ");
+//!
+//! // Or acquire it mutably if necessary
+//! let output_mut = buf_output.output_buffer();
 //!
 //! // Post-process the output value before use
-//! output.push_str("world!");
+//! output_mut.push_str("world!");
 //! ```
 
 #![cfg_attr(not(test), no_std)]
@@ -336,6 +340,19 @@ impl<T: Send> Output<T> {
     pub fn updated(&self) -> bool {
         let back_info = self.shared.back_info.load(Ordering::Relaxed);
         back_info & BACK_DIRTY_BIT != 0
+    }
+
+    /// Access the output buffer directly, in non-mutable way
+    ///
+    /// This is simply a non-mutable version of `output_buffer()`.
+    /// For details, see the `output_buffer()` method.
+    ///
+    /// This method does not update the output buffer automatically. You need to call
+    /// `update()` in order to fetch buffer updates from the producer.
+    pub fn peek_output_buffer(&self) -> &T {
+        // Access the output buffer directly
+        let output_ptr = self.shared.buffers[self.output_idx as usize].get();
+        unsafe { &*output_ptr }
     }
 
     /// Access the output buffer directly
@@ -881,7 +898,7 @@ mod tests {
             move || {
                 let mut last_value = 0usize;
                 while last_value < TEST_WRITE_COUNT {
-                    match buf_output.output_buffer().get() {
+                    match buf_output.peek_output_buffer().get() {
                         Racey::Consistent(new_value) => {
                             assert!((new_value >= last_value) && (new_value <= TEST_WRITE_COUNT));
                             last_value = new_value;
