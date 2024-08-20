@@ -74,6 +74,28 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Check semver
+        # Not guaranteed to run on nightly, so we use the separate job below
+        if: github.event_name != 'schedule'
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          rust-toolchain: manual
+
+  # Workaround for cargo-semver-checks not guaranteeing nightly support
+  scheduled-semver-checks:
+    if: github.event_name == 'schedule'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Set up stable toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt,clippy
+
+      - name: Check semver (scheduled version)
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
           rust-toolchain: manual
