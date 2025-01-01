@@ -625,10 +625,11 @@ mod tests {
 
         // Check that the clone uses its own, separate shared data storage
         assert_eq!(
-            as_ptr(&buf_clone.output.shared),
+            as_ptr(&buf_clone.input.shared),
             as_ptr(&buf_clone.output.shared)
         );
-        assert!(as_ptr(&buf_clone.input.shared) != as_ptr(&buf.input.shared));
+        assert_ne!(as_ptr(&buf_clone.input.shared), as_ptr(&buf.input.shared));
+        assert_ne!(as_ptr(&buf_clone.output.shared), as_ptr(&buf.output.shared));
 
         // Check that it is identical from PartialEq's point of view
         assert_eq!(buf, buf_clone);
