@@ -81,6 +81,8 @@ use crossbeam_utils::CachePadded;
 use alloc::sync::Arc;
 use core::{
     cell::UnsafeCell,
+    fmt,
+    ops::{Deref, DerefMut},
     sync::atomic::{AtomicU8, Ordering},
 };
 
@@ -299,6 +301,75 @@ impl<T: Send> Input<T> {
 
         // Tell whether we have overwritten unread data
         former_back_info & BACK_DIRTY_BIT != 0
+    }
+
+    /// Access the input buffer wrapped in the InputGuard
+    ///
+    /// This interface allows you to update the input buffer in place,
+    /// so that you can avoid creating values of type T repeatedy just to push
+    /// them into the triple buffer when doing so is expensive.
+    ///
+    /// To avoid that you have to take care of pushing the update manually
+    /// we return an `InputGuard` that calls `publish()` when dropped.
+    ///
+    /// Be aware that the buffer does not contain the last value that you published
+    /// (which is now available to the consumer thread). In fact, what you get
+    /// may not match _any_ value that you sent in the past, but rather be a new
+    /// value that was written in there by the consumer thread. All you can
+    /// safely assume is that the buffer contains a valid value of type T, which
+    /// you need to fill with valid values.
+    ///
+    pub fn guarded_input_buffer(&mut self) -> InputGuard<T> {
+        // This is safe because the synchronization protocol ensures that we
+        // have exclusive access to this buffer.
+        InputGuard { reference: self }
+    }
+}
+
+/// RAII Guard to the buffer provided by an `Input`.
+///
+/// The current buffer of the `Input` can be accessed through this guard via its `Deref` and `DerefMut` implementations.
+/// When the InputGuard is dropped it calls publish.
+///
+/// This structure is created by the `guarded_input_buffer` method.
+///
+
+pub struct InputGuard<'a, T: 'a + Send> {
+    reference: &'a mut Input<T>,
+}
+
+impl<T: Send> Deref for InputGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        let input_ptr = self.reference.shared.buffers[self.reference.input_idx as usize].get();
+        unsafe { &*input_ptr }
+    }
+}
+
+impl<T: Send> DerefMut for InputGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        let input_ptr = self.reference.shared.buffers[self.reference.input_idx as usize].get();
+        unsafe { &mut *input_ptr }
+    }
+}
+
+impl<T: Send> Drop for InputGuard<'_, T> {
+    #[inline]
+    fn drop(&mut self) {
+        self.reference.publish();
+    }
+}
+
+impl<T: Send + fmt::Debug> fmt::Debug for InputGuard<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<T: fmt::Display + Send> fmt::Display for InputGuard<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (**self).fmt(f)
     }
 }
 
@@ -728,12 +799,82 @@ mod tests {
         }
     }
 
+    /// Check that (sequentially) writing to a triple buffer works
+    #[test]
+    fn sequential_guarded_write() {
+        // Let's create a triple buffer
+        let mut buf = TripleBuffer::new(&false);
+
+        // Back up the initial buffer state
+        let old_buf = buf.clone();
+
+        // Perform a write
+        *buf.input.guarded_input_buffer() = true;
+
+        // Check new implementation state
+        {
+            // Starting from the old buffer state...
+            let mut expected_buf = old_buf.clone();
+
+            // ...write the new value in and swap...
+            {
+                *expected_buf.input.guarded_input_buffer() = true;
+            }
+
+            // Nothing else should have changed
+            assert_eq!(buf, expected_buf);
+            check_buf_state(&mut buf, true);
+        }
+    }
+
     /// Check that (sequentially) reading from a triple buffer works
     #[test]
     fn sequential_read() {
         // Let's create a triple buffer and write into it
         let mut buf = TripleBuffer::new(&1.0);
         buf.input.write(4.2);
+
+        // Test readout from dirty (freshly written) triple buffer
+        {
+            // Back up the initial buffer state
+            let old_buf = buf.clone();
+
+            // Read from the buffer
+            let result = *buf.output.read();
+
+            // Output value should be correct
+            assert_eq!(result, 4.2);
+
+            // Result should be equivalent to carrying out an update
+            let mut expected_buf = old_buf.clone();
+            assert!(expected_buf.output.update());
+            assert_eq!(buf, expected_buf);
+            check_buf_state(&mut buf, false);
+        }
+
+        // Test readout from clean (unchanged) triple buffer
+        {
+            // Back up the initial buffer state
+            let old_buf = buf.clone();
+
+            // Read from the buffer
+            let result = *buf.output.read();
+
+            // Output value should be correct
+            assert_eq!(result, 4.2);
+
+            // Buffer state should be unchanged
+            assert_eq!(buf, old_buf);
+            check_buf_state(&mut buf, false);
+        }
+    }
+
+    /// Check that (sequentially) reading from a triple buffer works
+    #[test]
+    fn sequential_guarded_read() {
+        // Let's create a triple buffer and write into it
+        let mut buf = TripleBuffer::new(&1.0);
+        *buf.input.guarded_input_buffer() = 4.2;
 
         // Test readout from dirty (freshly written) triple buffer
         {
