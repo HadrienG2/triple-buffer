@@ -390,12 +390,12 @@ impl<T: Send> Output<T> {
     /// performed to the output buffer via the `output_buffer()` interface.
     ///
     pub fn update(&mut self) -> bool {
-        // Access the shared state
-        let shared_state = &(*self.shared);
-
         // Check if an update is present in the back-buffer
         let updated = self.updated();
         if updated {
+            // Access the shared state
+            let shared_state = &(*self.shared);
+
             // If so, exchange our output buffer with the back-buffer, thusly
             // acquiring exclusive access to the old back buffer while giving
             // the producer a new back-buffer to write to.
