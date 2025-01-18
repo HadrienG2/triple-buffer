@@ -329,7 +329,7 @@ impl<T: Send> Input<T> {
 /// RAII Guard to the buffer provided by an `Input`.
 ///
 /// The current buffer of the `Input` can be accessed through this guard via its `Deref` and `DerefMut` implementations.
-/// When the InputGuard is dropped it calls publish.
+/// When the `InputGuard` is dropped it calls publish.
 ///
 /// This structure is created by the `guarded_input_buffer` method.
 ///
@@ -769,6 +769,61 @@ mod tests {
             .back_info
             .store(old_output_idx, Ordering::Relaxed);
         assert_eq!(buf, expected_buf);
+        check_buf_state(&mut buf, false);
+    }
+
+    /// Check that writing to a triple buffer works
+    #[test]
+    fn vec_guarded_write() {
+        let mut buf = TripleBuffer::new(&vec![]);
+
+        // write and publish
+        {
+            let mut buffer = buf.input.guarded_input_buffer();
+            buffer.push(0);
+            buffer.push(1);
+            buffer.push(2);
+
+            // not yet published
+            let back_info = buffer.reference.shared.back_info.load(Ordering::Relaxed);
+            let back_buffer_dirty = back_info & BACK_DIRTY_BIT != 0;
+            assert_eq!(back_buffer_dirty, false);
+        }
+        //published but not read
+        check_buf_state(&mut buf, true);
+        assert_eq!(*buf.output.read(), vec![0, 1, 2]);
+        //published and read
+        check_buf_state(&mut buf, false);
+
+        // write and publish
+        {
+            buf.input.guarded_input_buffer().push(3);
+        }
+        //published but not read
+        check_buf_state(&mut buf, true);
+
+        // write and publish
+        {
+            buf.input.guarded_input_buffer().push(4);
+        }
+        assert_eq!(*buf.output.read(), vec![4]);
+        check_buf_state(&mut buf, false);
+
+        // write and publish
+        {
+            buf.input.guarded_input_buffer().push(5);
+        }
+        // reuse of previously used buffer leads to unintuitive state
+        assert_eq!(*buf.output.read(), vec![3, 5]);
+        check_buf_state(&mut buf, false);
+        // clear, write and publish
+        {
+            let mut buffer = buf.input.guarded_input_buffer();
+            buffer.clear();
+            buffer.push(6);
+        }
+        // cleared buffer is more predictable
+        assert_eq!(*buf.output.read(), vec![6]);
         check_buf_state(&mut buf, false);
     }
 
