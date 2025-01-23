@@ -233,6 +233,18 @@ impl<T: Send> Input<T> {
         back_info & BACK_DIRTY_BIT == 0
     }
 
+    /// Access the input buffer directly, in non-mutable way
+    ///
+    /// This is simply a non-mutable version of `input_buffer()`.
+    /// For details, see the `input_buffer()` method.
+    ///
+    #[doc(hidden)]
+    fn peek_input_buffer(&self) -> &T {
+        // Access the input buffer directly
+        let input_ptr = self.shared.buffers[self.input_idx as usize].get();
+        unsafe { &*input_ptr }
+    }
+
     /// Access the input buffer directly
     ///
     /// This advanced interface allows you to update the input buffer in place,
@@ -303,14 +315,14 @@ impl<T: Send> Input<T> {
         former_back_info & BACK_DIRTY_BIT != 0
     }
 
-    /// Access the input buffer wrapped in the InputGuard
+    /// Access the input buffer wrapped in the `InputPublishGuard`
     ///
     /// This interface allows you to update the input buffer in place,
     /// so that you can avoid creating values of type T repeatedy just to push
     /// them into the triple buffer when doing so is expensive.
     ///
     /// To avoid that you have to take care of pushing the update manually
-    /// we return an `InputGuard` that calls `publish()` when dropped.
+    /// we return an `InputPublishGuard` that calls `publish()` when dropped.
     ///
     /// Be aware that the buffer does not contain the last value that you published
     /// (which is now available to the consumer thread). In fact, what you get
@@ -319,55 +331,51 @@ impl<T: Send> Input<T> {
     /// safely assume is that the buffer contains a valid value of type T, which
     /// you need to fill with valid values.
     ///
-    pub fn guarded_input_buffer(&mut self) -> InputGuard<T> {
-        // This is safe because the synchronization protocol ensures that we
-        // have exclusive access to this buffer.
-        InputGuard { reference: self }
+    pub fn input_buffer_publisher(&mut self) -> InputPublishGuard<T> {
+        InputPublishGuard { reference: self }
     }
 }
 
 /// RAII Guard to the buffer provided by an `Input`.
 ///
 /// The current buffer of the `Input` can be accessed through this guard via its `Deref` and `DerefMut` implementations.
-/// When the `InputGuard` is dropped it calls publish.
+/// When the `InputPublishGuard` is dropped it calls publish.
 ///
 /// This structure is created by the `guarded_input_buffer` method.
 ///
 
-pub struct InputGuard<'a, T: 'a + Send> {
+pub struct InputPublishGuard<'a, T: 'a + Send> {
     reference: &'a mut Input<T>,
 }
 
-impl<T: Send> Deref for InputGuard<'_, T> {
+impl<T: Send> Deref for InputPublishGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        let input_ptr = self.reference.shared.buffers[self.reference.input_idx as usize].get();
-        unsafe { &*input_ptr }
+        self.reference.peek_input_buffer()
     }
 }
 
-impl<T: Send> DerefMut for InputGuard<'_, T> {
+impl<T: Send> DerefMut for InputPublishGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        let input_ptr = self.reference.shared.buffers[self.reference.input_idx as usize].get();
-        unsafe { &mut *input_ptr }
+        self.reference.input_buffer()
     }
 }
 
-impl<T: Send> Drop for InputGuard<'_, T> {
+impl<T: Send> Drop for InputPublishGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
         self.reference.publish();
     }
 }
 
-impl<T: Send + fmt::Debug> fmt::Debug for InputGuard<'_, T> {
+impl<T: Send + fmt::Debug> fmt::Debug for InputPublishGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<T: fmt::Display + Send> fmt::Display for InputGuard<'_, T> {
+impl<T: fmt::Display + Send> fmt::Display for InputPublishGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
@@ -779,7 +787,7 @@ mod tests {
 
         // write and publish
         {
-            let mut buffer = buf.input.guarded_input_buffer();
+            let mut buffer = buf.input.input_buffer_publisher();
             buffer.push(0);
             buffer.push(1);
             buffer.push(2);
@@ -787,7 +795,7 @@ mod tests {
             // not yet published
             let back_info = buffer.reference.shared.back_info.load(Ordering::Relaxed);
             let back_buffer_dirty = back_info & BACK_DIRTY_BIT != 0;
-            assert_eq!(back_buffer_dirty, false);
+            assert!(!back_buffer_dirty);
         }
         //published but not read
         check_buf_state(&mut buf, true);
@@ -797,28 +805,28 @@ mod tests {
 
         // write and publish
         {
-            buf.input.guarded_input_buffer().push(3);
+            buf.input.input_buffer_publisher().push(3);
         }
         //published but not read
         check_buf_state(&mut buf, true);
 
         // write and publish
         {
-            buf.input.guarded_input_buffer().push(4);
+            buf.input.input_buffer_publisher().push(4);
         }
         assert_eq!(*buf.output.read(), vec![4]);
         check_buf_state(&mut buf, false);
 
         // write and publish
         {
-            buf.input.guarded_input_buffer().push(5);
+            buf.input.input_buffer_publisher().push(5);
         }
         // reuse of previously used buffer leads to unintuitive state
         assert_eq!(*buf.output.read(), vec![3, 5]);
         check_buf_state(&mut buf, false);
         // clear, write and publish
         {
-            let mut buffer = buf.input.guarded_input_buffer();
+            let mut buffer = buf.input.input_buffer_publisher();
             buffer.clear();
             buffer.push(6);
         }
@@ -864,7 +872,7 @@ mod tests {
         let old_buf = buf.clone();
 
         // Perform a write
-        *buf.input.guarded_input_buffer() = true;
+        *buf.input.input_buffer_publisher() = true;
 
         // Check new implementation state
         {
@@ -873,7 +881,7 @@ mod tests {
 
             // ...write the new value in and swap...
             {
-                *expected_buf.input.guarded_input_buffer() = true;
+                *expected_buf.input.input_buffer_publisher() = true;
             }
 
             // Nothing else should have changed
@@ -929,12 +937,12 @@ mod tests {
     fn sequential_guarded_read() {
         // Let's create a triple buffer and write into it
         let mut buf = TripleBuffer::new(&1.0);
-        *buf.input.guarded_input_buffer() = 4.2;
+        *buf.input.input_buffer_publisher() = 4.2;
 
         // Test readout from dirty (freshly written) triple buffer
         {
             // Back up the initial buffer state
-            let old_buf = buf.clone();
+            let old_buf: TripleBuffer<f64> = buf.clone();
 
             // Read from the buffer
             let result = *buf.output.read();
