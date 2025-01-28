@@ -876,9 +876,8 @@ mod tests {
             let mut expected_buf = old_buf.clone();
 
             // ...write the new value in and swap...
-            {
-                *expected_buf.input.input_buffer_publisher() = true;
-            }
+            *expected_buf.input.input_buffer() = true;
+            expected_buf.input.publish();
 
             // Nothing else should have changed
             assert_eq!(buf, expected_buf);
