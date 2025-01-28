@@ -120,7 +120,7 @@ pub fn benchmark(c: &mut Criterion) {
 
     {
         let (mut input, mut output) = TripleBuffer::<u8>::default().split();
-        let mut write_contended = c.benchmark_group("write contention guarded");
+        let mut write_contended = c.benchmark_group("guarded write contention");
         testbench::run_under_contention(
             || *input.input_buffer_publisher() = black_box(0),
             || {
