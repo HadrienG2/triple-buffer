@@ -785,7 +785,7 @@ mod tests {
     fn vec_guarded_write() {
         let mut buf = TripleBuffer::new(&vec![]);
 
-        // write and publish
+        // write new value, publish, read
         {
             let mut buffer = buf.input.input_buffer_publisher();
             buffer.push(0);
@@ -797,40 +797,36 @@ mod tests {
             let back_buffer_dirty = back_info & BACK_DIRTY_BIT != 0;
             assert!(!back_buffer_dirty);
         }
-        //published but not read
-        check_buf_state(&mut buf, true);
+        check_buf_state(&mut buf, true);  // after publish, before read
         assert_eq!(*buf.output.read(), vec![0, 1, 2]);
-        //published and read
-        check_buf_state(&mut buf, false);
+        check_buf_state(&mut buf, false); // after publish and read
 
-        // write and publish
+        // write new value, publish, don't read
         {
             buf.input.input_buffer_publisher().push(3);
         }
-        //published but not read
         check_buf_state(&mut buf, true);
 
-        // write and publish
+        // write new value, publish, read
         {
             buf.input.input_buffer_publisher().push(4);
         }
         assert_eq!(*buf.output.read(), vec![4]);
         check_buf_state(&mut buf, false);
 
-        // write and publish
+        // overwrite existing value, publish, surprising read
         {
             buf.input.input_buffer_publisher().push(5);
         }
-        // reuse of previously used buffer leads to unintuitive state
         assert_eq!(*buf.output.read(), vec![3, 5]);
         check_buf_state(&mut buf, false);
-        // clear, write and publish
+        
+        // to avoid surprise, always clear before write
         {
             let mut buffer = buf.input.input_buffer_publisher();
             buffer.clear();
             buffer.push(6);
         }
-        // cleared buffer is more predictable
         assert_eq!(*buf.output.read(), vec![6]);
         check_buf_state(&mut buf, false);
     }
