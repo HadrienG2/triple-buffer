@@ -238,7 +238,6 @@ impl<T: Send> Input<T> {
     /// This is simply a non-mutable version of `input_buffer()`.
     /// For details, see the `input_buffer()` method.
     ///
-    #[doc(hidden)]
     fn peek_input_buffer(&self) -> &T {
         // Access the input buffer directly
         let input_ptr = self.shared.buffers[self.input_idx as usize].get();
@@ -343,7 +342,6 @@ impl<T: Send> Input<T> {
 ///
 /// This structure is created by the `guarded_input_buffer` method.
 ///
-
 pub struct InputPublishGuard<'a, T: 'a + Send> {
     reference: &'a mut Input<T>,
 }
@@ -797,7 +795,7 @@ mod tests {
             let back_buffer_dirty = back_info & BACK_DIRTY_BIT != 0;
             assert!(!back_buffer_dirty);
         }
-        check_buf_state(&mut buf, true);  // after publish, before read
+        check_buf_state(&mut buf, true); // after publish, before read
         assert_eq!(*buf.output.read(), vec![0, 1, 2]);
         check_buf_state(&mut buf, false); // after publish and read
 
@@ -820,7 +818,7 @@ mod tests {
         }
         assert_eq!(*buf.output.read(), vec![3, 5]);
         check_buf_state(&mut buf, false);
-        
+
         // to avoid surprise, always clear before write
         {
             let mut buffer = buf.input.input_buffer_publisher();
