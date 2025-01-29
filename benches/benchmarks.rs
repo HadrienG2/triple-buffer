@@ -23,6 +23,11 @@ pub fn benchmark(c: &mut Criterion) {
                 input.publish();
             })
         });
+        uncontended.bench_function("guarded write + send", |b| {
+            b.iter(|| {
+                *input.input_buffer_publisher() = black_box(0);
+            })
+        });
         uncontended.bench_function("send", |b| b.iter(|| input.write(black_box(0))));
         uncontended.bench_function("publish + dirty update", |b| {
             b.iter(|| {
@@ -33,6 +38,12 @@ pub fn benchmark(c: &mut Criterion) {
         uncontended.bench_function("transmit", |b| {
             b.iter(|| {
                 input.write(black_box(0));
+                *output.read()
+            })
+        });
+        uncontended.bench_function("guarded transmit", |b| {
+            b.iter(|| {
+                *input.input_buffer_publisher() = black_box(0);
                 *output.read()
             })
         });
@@ -53,6 +64,10 @@ pub fn benchmark(c: &mut Criterion) {
                         input.publish();
                     })
                 });
+                read_contended.bench_function("guarded write+send", |b| {
+                    b.iter(|| *input.input_buffer_publisher() = black_box(0))
+                });
+
                 read_contended.bench_function("send", |b| b.iter(|| input.write(black_box(0))));
             },
         );
