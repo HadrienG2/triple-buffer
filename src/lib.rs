@@ -104,7 +104,7 @@
 //!     // the "input" RAII guard
 //! }
 //!
-//! // From this point on, the publisher can see the updated version
+//! // From this point on, the consumer can see the updated version
 //! ```
 
 #![cfg_attr(not(test), no_std)]
