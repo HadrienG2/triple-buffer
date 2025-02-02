@@ -74,13 +74,11 @@ jobs:
       - name: Check clippy lints
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Set up cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@cargo-machete
 
       - name: Look for unused dependencies with cargo-machete
-        run: |
-          cargo binstall -y cargo-machete
-          cargo machete
+        run: cargo machete
 
       - name: Check semver
         # Not guaranteed to run on nightly, so we use the separate job below

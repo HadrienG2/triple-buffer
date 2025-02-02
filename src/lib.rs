@@ -41,10 +41,12 @@
 //! use triple_buffer::triple_buffer;
 //! let (mut buf_input, mut buf_output) = triple_buffer(&String::with_capacity(42));
 //!
+//! // --- PRODUCER SIDE ---
+//!
 //! // Mutate the input buffer in place
 //! {
 //!     // Acquire a reference to the input buffer
-//!     let input = buf_input.input_buffer();
+//!     let input = buf_input.input_buffer_mut();
 //!
 //!     // In general, you don't know what's inside of the buffer, so you should
 //!     // always reset the value before use (this is a type-specific process).
@@ -57,18 +59,52 @@
 //! // Publish the above input buffer update
 //! buf_input.publish();
 //!
+//! // --- CONSUMER SIDE ---
+//!
 //! // Manually fetch the buffer update from the consumer interface
 //! buf_output.update();
 //!
-//! // Acquire reference to the output buffer
+//! // Acquire read-only reference to the output buffer
 //! let output = buf_output.peek_output_buffer();
 //! assert_eq!(*output, "Hello, ");
 //!
-//! // Or acquire it mutably if necessary
-//! let output_mut = buf_output.output_buffer();
+//! // Or acquire mutable reference if necessary
+//! let output_mut = buf_output.output_buffer_mut();
 //!
 //! // Post-process the output value before use
 //! output_mut.push_str("world!");
+//! ```
+//!
+//! Finally, as a middle ground before the maximal ergonomics of the
+//! [`write()`](Input::write) API and the maximal control of the
+//! [`input_buffer_mut()`](Input::input_buffer_mut)/[`publish()`](Input::publish)
+//! API, you can also use the
+//! [`input_buffer_publisher()`](Input::input_buffer_publisher) RAII API on the
+//! producer side, which ensures that `publish()` is automatically called when
+//! the resulting input buffer handle goes out of scope:
+//!
+//! ```
+//! // Create and split a triple buffer
+//! use triple_buffer::triple_buffer;
+//! let (mut buf_input, _) = triple_buffer(&String::with_capacity(42));
+//!
+//! // Mutate the input buffer in place and publish it
+//! {
+//!     // Acquire a reference to the input buffer
+//!     let mut input = buf_input.input_buffer_publisher();
+//!
+//!     // In general, you don't know what's inside of the buffer, so you should
+//!     // always reset the value before use (this is a type-specific process).
+//!     input.clear();
+//!
+//!     // Perform an in-place update
+//!     input.push_str("Hello world!");
+//!
+//!     // Input buffer is automatically published at the end of the scope of
+//!     // the "input" RAII guard
+//! }
+//!
+//! // From this point on, the consumer can see the updated version
 //! ```
 
 #![cfg_attr(not(test), no_std)]
@@ -92,7 +128,6 @@ use core::{
 /// communication channel which behaves like a shared variable: the producer
 /// submits regular updates, and the consumer accesses the latest available
 /// value whenever it feels like it.
-///
 #[derive(Debug)]
 pub struct TripleBuffer<T: Send> {
     /// Input object used by producers to send updates
@@ -199,7 +234,6 @@ impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
 /// buffer whenever he likes. These updates are nonblocking: a collision between
 /// the producer and the consumer will result in cache contention, but deadlocks
 /// and scheduling-induced slowdowns cannot happen.
-///
 #[derive(Debug)]
 pub struct Input<T: Send> {
     /// Reference-counted shared state
@@ -214,34 +248,51 @@ impl<T: Send> Input<T> {
     /// Write a new value into the triple buffer
     pub fn write(&mut self, value: T) {
         // Update the input buffer
-        *self.input_buffer() = value;
+        *self.input_buffer_mut() = value;
 
         // Publish our update to the consumer
         self.publish();
     }
 
-    /// Check if the consumer has fetched our last submission yet
+    /// Check if the consumer has fetched our latest submission yet
     ///
     /// This method is only intended for diagnostics purposes. Please do not let
     /// it inform your decision of sending or not sending a value, as that would
     /// effectively be building a very poor spinlock-based double buffer
     /// implementation. If what you truly need is a double buffer, build
     /// yourself a proper blocking one instead of wasting CPU time.
-    ///
     pub fn consumed(&self) -> bool {
         let back_info = self.shared.back_info.load(Ordering::Relaxed);
         back_info & BACK_DIRTY_BIT == 0
     }
 
-    /// Access the input buffer directly, in non-mutable way
+    /// Query the current value of the input buffer
     ///
-    /// This is simply a non-mutable version of `input_buffer()`.
-    /// For details, see the `input_buffer()` method.
-    ///
+    /// This is simply a read-only version of
+    /// [`input_buffer_mut()`](Input::input_buffer_mut). Please read the
+    /// documentation of that method for more information on the precautions
+    /// that need to be taken when accessing the input buffer in place.
     fn peek_input_buffer(&self) -> &T {
         // Access the input buffer directly
         let input_ptr = self.shared.buffers[self.input_idx as usize].get();
         unsafe { &*input_ptr }
+    }
+
+    /// Access the input buffer directly
+    ///
+    /// This is, for now, a deprecated alias to
+    /// [`input_buffer_mut()`](Input::input_buffer_mut). Please use this method
+    /// instead.
+    ///
+    /// In a future major release of this crate, `input_buffer()` will
+    /// undergo a breaking change to instead provide read-only access.
+    ///
+    /// The aim of this process is to eventually migrate towards the standard
+    /// `accessor()`/`accessor_mut()` method naming convention that most Rust
+    /// libraries follow.
+    #[deprecated = "Please use input_buffer_mut() instead"]
+    pub fn input_buffer(&mut self) -> &mut T {
+        self.input_buffer_mut()
     }
 
     /// Access the input buffer directly
@@ -251,21 +302,23 @@ impl<T: Send> Input<T> {
     /// them into the triple buffer when doing so is expensive.
     ///
     /// However, by using it, you force yourself to take into account some
-    /// implementation subtleties that you could normally ignore.
+    /// implementation subtleties that you could otherwise ignore.
     ///
     /// First, the buffer does not contain the last value that you published
     /// (which is now available to the consumer thread). In fact, what you get
     /// may not match _any_ value that you sent in the past, but rather be a new
     /// value that was written in there by the consumer thread. All you can
     /// safely assume is that the buffer contains a valid value of type T, which
-    /// you may need to "clean up" before use using a type-specific process.
+    /// you may need to "clean up" before use using a type-specific process
+    /// (like calling the `clear()` method of a `Vec`/`String`).
     ///
     /// Second, we do not send updates automatically. You need to call
-    /// `publish()` in order to propagate a buffer update to the consumer.
-    /// Alternative designs based on Drop were considered, but considered too
-    /// magical for the target audience of this interface.
-    ///
-    pub fn input_buffer(&mut self) -> &mut T {
+    /// [`publish()`](Input::publish) in order to propagate a buffer update to
+    /// the consumer. If you would prefer this to be done automatically when the
+    /// input buffer reference goes out of scope, consider using the
+    /// [`input_buffer_publisher()`](Input::input_buffer_publisher) RAII
+    /// interface instead.
+    pub fn input_buffer_mut(&mut self) -> &mut T {
         // This is safe because the synchronization protocol ensures that we
         // have exclusive access to this buffer.
         let input_ptr = self.shared.buffers[self.input_idx as usize].get();
@@ -274,15 +327,14 @@ impl<T: Send> Input<T> {
 
     /// Publish the current input buffer, checking for overwrites
     ///
-    /// After updating the input buffer using `input_buffer()`, you can use this
-    /// method to publish your updates to the consumer.
-    ///
-    /// This will replace the current input buffer with another one, as you
-    /// cannot continue using the old one while the consumer is accessing it.
+    /// After updating the input buffer in-place using
+    /// [`input_buffer_mut()`](Input::input_buffer_mut), you can use this method
+    /// to publish your updates to the consumer. Beware that this will replace
+    /// the current input buffer with another one that has totally unrelated
+    /// contents.
     ///
     /// It will also tell you whether you overwrote a value which was not read
     /// by the consumer thread.
-    ///
     pub fn publish(&mut self) -> bool {
         // Swap the input buffer and the back buffer, setting the dirty bit
         //
@@ -316,32 +368,30 @@ impl<T: Send> Input<T> {
 
     /// Access the input buffer wrapped in the `InputPublishGuard`
     ///
-    /// This interface allows you to update the input buffer in place,
-    /// so that you can avoid creating values of type T repeatedy just to push
-    /// them into the triple buffer when doing so is expensive.
+    /// This is an RAII alternative to the [`input_buffer_mut()`]/[`publish()`]
+    /// workflow where the [`publish()`] transaction happens automatically when
+    /// the input buffer handle goes out of scope.
     ///
-    /// To avoid that you have to take care of pushing the update manually
-    /// we return an `InputPublishGuard` that calls `publish()` when dropped.
+    /// Please check out the documentation of [`input_buffer_mut()`] and
+    /// [`publish()`] to know more about the precautions that you need to take
+    /// when using the lower-level in-place buffer access interface.
     ///
-    /// Be aware that the buffer does not contain the last value that you published
-    /// (which is now available to the consumer thread). In fact, what you get
-    /// may not match _any_ value that you sent in the past, but rather be a new
-    /// value that was written in there by the consumer thread. All you can
-    /// safely assume is that the buffer contains a valid value of type T, which
-    /// you need to fill with valid values.
-    ///
+    /// [`input_buffer_mut()`]: Input::input_buffer_mut
+    /// [`publish()`]: Input::publish
     pub fn input_buffer_publisher(&mut self) -> InputPublishGuard<T> {
         InputPublishGuard { reference: self }
     }
 }
 
-/// RAII Guard to the buffer provided by an `Input`.
+/// RAII Guard to the buffer provided by an [`Input`].
 ///
-/// The current buffer of the `Input` can be accessed through this guard via its `Deref` and `DerefMut` implementations.
-/// When the `InputPublishGuard` is dropped it calls publish.
+/// The current buffer of the [`Input`] can be accessed through this guard via
+/// its [`Deref`] and [`DerefMut`] implementations.
 ///
-/// This structure is created by the `guarded_input_buffer` method.
+/// When the guard is dropped, [`Input::publish()`] will be called
+/// automatically.
 ///
+/// This structure is created by the [`Input::input_buffer_publisher()`] method.
 pub struct InputPublishGuard<'a, T: 'a + Send> {
     reference: &'a mut Input<T>,
 }
@@ -356,7 +406,7 @@ impl<T: Send> Deref for InputPublishGuard<'_, T> {
 
 impl<T: Send> DerefMut for InputPublishGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.reference.input_buffer()
+        self.reference.input_buffer_mut()
     }
 }
 
@@ -385,7 +435,6 @@ impl<T: fmt::Display + Send> fmt::Display for InputPublishGuard<'_, T> {
 /// update from the producer whenever he likes. Readout is nonblocking: a
 /// collision between the producer and consumer will result in cache contention,
 /// but deadlocks and scheduling-induced slowdowns cannot happen.
-///
 #[derive(Debug)]
 pub struct Output<T: Send> {
     /// Reference-counted shared state
@@ -403,33 +452,59 @@ impl<T: Send> Output<T> {
         self.update();
 
         // Give access to the output buffer
-        self.output_buffer()
+        self.output_buffer_mut()
     }
 
-    /// Tell whether a buffer update is incoming from the producer
+    /// Tell whether an updated value has been submitted by the producer
     ///
-    /// This method is only intended for diagnostics purposes. Please do not let
-    /// it inform your decision of reading a value or not, as that would
+    /// This method is mainly intended for diagnostics purposes. Please do not
+    /// let it inform your decision of reading a value or not, as that would
     /// effectively be building a very poor spinlock-based double buffer
     /// implementation. If what you truly need is a double buffer, build
     /// yourself a proper blocking one instead of wasting CPU time.
-    ///
     pub fn updated(&self) -> bool {
         let back_info = self.shared.back_info.load(Ordering::Relaxed);
         back_info & BACK_DIRTY_BIT != 0
     }
 
-    /// Access the output buffer directly, in non-mutable way
+    /// Query the current value of the output buffer
     ///
-    /// This is simply a non-mutable version of `output_buffer()`.
-    /// For details, see the `output_buffer()` method.
+    /// This is simply a read-only version of
+    /// [`output_buffer_mut()`](Output::output_buffer_mut). Please read the
+    /// documentation of that method for more information on the precautions
+    /// that need to be taken when accessing the output buffer in place.
     ///
-    /// This method does not update the output buffer automatically. You need to call
-    /// `update()` in order to fetch buffer updates from the producer.
+    /// In particular, remember that this method does not update the output
+    /// buffer automatically. You need to call [`update()`](Output::update) in
+    /// order to fetch buffer updates from the producer.
     pub fn peek_output_buffer(&self) -> &T {
         // Access the output buffer directly
         let output_ptr = self.shared.buffers[self.output_idx as usize].get();
         unsafe { &*output_ptr }
+    }
+
+    /// Access the input buffer directly
+    ///
+    /// This is, for now, a deprecated alias to [`output_buffer_mut()`]. Please
+    /// use this method instead.
+    ///
+    /// In a future major release of this crate, `output_buffer()` will undergo
+    /// a breaking change to instead provide read-only access, like
+    /// [`peek_output_buffer()`] currently does. At that point,
+    /// [`peek_output_buffer()`] will be deprecated.
+    ///
+    /// Finally, in a later major release [`peek_output_buffer()`] will be
+    /// removed.
+    ///
+    /// The aim of this process is to eventually migrate towards the standard
+    /// `accessor()`/`accessor_mut()` method naming convention that most Rust
+    /// libraries follow.
+    ///
+    /// [`output_buffer_mut()`]: Output::output_buffer_mut
+    /// [`peek_output_buffer()`]: Output::peek_output_buffer
+    #[deprecated = "Please use output_buffer_mut() instead"]
+    pub fn output_buffer(&mut self) -> &mut T {
+        self.output_buffer_mut()
     }
 
     /// Access the output buffer directly
@@ -443,14 +518,16 @@ impl<T: Send> Output<T> {
     /// implementation subtleties that you could normally ignore.
     ///
     /// First, keep in mind that you can lose access to the current output
-    /// buffer any time `read()` or `update()` is called, as it may be replaced
-    /// by an updated buffer from the producer automatically.
+    /// buffer any time [`read()`] or [`update()`] is called, as it may be
+    /// replaced by an updated buffer from the producer automatically.
     ///
     /// Second, to reduce the potential for the aforementioned usage error, this
     /// method does not update the output buffer automatically. You need to call
-    /// `update()` in order to fetch buffer updates from the producer.
+    /// [`update()`] in order to fetch buffer updates from the producer.
     ///
-    pub fn output_buffer(&mut self) -> &mut T {
+    /// [`read()`]: Output::read
+    /// [`update()`]: Output::update
+    pub fn output_buffer_mut(&mut self) -> &mut T {
         // This is safe because the synchronization protocol ensures that we
         // have exclusive access to this buffer.
         let output_ptr = self.shared.buffers[self.output_idx as usize].get();
@@ -464,8 +541,8 @@ impl<T: Send> Output<T> {
     /// you whether such an update was carried out.
     ///
     /// Bear in mind that when this happens, you will lose any change that you
-    /// performed to the output buffer via the `output_buffer()` interface.
-    ///
+    /// performed to the output buffer via the
+    /// [`output_buffer_mut()`](Output::output_buffer_mut) interface.
     pub fn update(&mut self) -> bool {
         // Check if an update is present in the back-buffer
         let updated = self.updated();
@@ -513,7 +590,6 @@ impl<T: Send> Output<T> {
 /// - Three memory buffers suitable for storing the data at hand
 /// - Information about the back-buffer: which buffer is the current back-buffer
 ///   and whether an update was published since the last readout.
-///
 #[derive(Debug)]
 struct SharedState<T: Send> {
     /// Data storage buffers
@@ -847,7 +923,7 @@ mod tests {
             let mut expected_buf = old_buf.clone();
 
             // ...write the new value in and swap...
-            *expected_buf.input.input_buffer() = true;
+            *expected_buf.input.input_buffer_mut() = true;
             expected_buf.input.publish();
 
             // Nothing else should have changed
@@ -874,7 +950,7 @@ mod tests {
             let mut expected_buf = old_buf.clone();
 
             // ...write the new value in and swap...
-            *expected_buf.input.input_buffer() = true;
+            *expected_buf.input.input_buffer_mut() = true;
             expected_buf.input.publish();
 
             // Nothing else should have changed
@@ -1016,7 +1092,6 @@ mod tests {
     /// - Close running applications in the background
     /// - Re-run the tests with only one OS thread (--test-threads=1)
     /// - Increase the writer sleep period
-    ///
     #[test]
     #[ignore]
     fn uncontended_concurrent_read_write() {
@@ -1082,7 +1157,7 @@ mod tests {
         testbench::concurrent_test_2(
             move || {
                 for new_value in 1..=TEST_WRITE_COUNT {
-                    match buf_input.input_buffer().get() {
+                    match buf_input.input_buffer_mut().get() {
                         Racey::Consistent(curr_value) => {
                             assert!(curr_value <= new_value);
                         }
@@ -1106,7 +1181,7 @@ mod tests {
                         }
                     }
                     if buf_output.updated() {
-                        buf_output.output_buffer().set(last_value / 2);
+                        buf_output.output_buffer_mut().set(last_value / 2);
                         buf_output.update();
                     }
                 }
@@ -1156,7 +1231,7 @@ mod tests {
 
         // Check that the "input buffer" query behaves as expected
         assert_eq!(
-            as_ptr(&buf.input.input_buffer()),
+            as_ptr(&buf.input.input_buffer_mut()),
             buf.input.shared.buffers[buf.input.input_idx as usize].get()
         );
         assert_eq!(*buf, initial_buf);
@@ -1167,7 +1242,7 @@ mod tests {
 
         // Check that the output_buffer query works in the initial state
         assert_eq!(
-            as_ptr(&buf.output.output_buffer()),
+            as_ptr(&buf.output.peek_output_buffer()),
             buf.output.shared.buffers[buf.output.output_idx as usize].get()
         );
         assert_eq!(*buf, initial_buf);
