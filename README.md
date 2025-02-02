@@ -17,7 +17,9 @@ useful for the following class of thread synchronization problems:
 - The producer wants to update a shared memory value periodically
 - The consumer wants to access the latest update from the producer at any time
 
-The simplest way to use it is as follows:
+For many use cases, you can use the ergonomic write/read interface, where
+the producer moves values into the buffer and the consumer accesses the
+latest buffer by shared reference:
 
 ```rust
 // Create a triple buffer
@@ -32,6 +34,9 @@ let consumer = std::thread::spawn(move || {
     let latest = buf_output.read();
     assert!(*latest == 42 || *latest == 0);
 });
+
+# producer.join().unwrap();
+# consumer.join().unwrap();
 ```
 
 In situations where moving the original value away and being unable to
@@ -45,10 +50,12 @@ and to precisely control when updates are propagated:
 use triple_buffer::triple_buffer;
 let (mut buf_input, mut buf_output) = triple_buffer(&String::with_capacity(42));
 
+// --- PRODUCER SIDE ---
+
 // Mutate the input buffer in place
 {
     // Acquire a reference to the input buffer
-    let input = buf_input.input_buffer();
+    let input = buf_input.input_buffer_mut();
 
     // In general, you don't know what's inside of the buffer, so you should
     // always reset the value before use (this is a type-specific process).
@@ -61,14 +68,52 @@ let (mut buf_input, mut buf_output) = triple_buffer(&String::with_capacity(42));
 // Publish the above input buffer update
 buf_input.publish();
 
+// --- CONSUMER SIDE ---
+
 // Manually fetch the buffer update from the consumer interface
 buf_output.update();
 
-// Acquire a mutable reference to the output buffer
-let output = buf_output.output_buffer();
+// Acquire read-only reference to the output buffer
+let output = buf_output.peek_output_buffer();
+assert_eq!(*output, "Hello, ");
+
+// Or acquire mutable reference if necessary
+let output_mut = buf_output.output_buffer_mut();
 
 // Post-process the output value before use
-output.push_str("world!");
+output_mut.push_str("world!");
+```
+
+Finally, as a middle ground before the maximal ergonomics of the
+[`write()`](Input::write) API and the maximal control of the
+[`input_buffer_mut()`](Input::input_buffer_mut)/[`publish()`](Input::publish)
+API, you can also use the
+[`input_buffer_publisher()`](Input::input_buffer_publisher) RAII API on the
+producer side, which ensures that `publish()` is automatically called when
+the resulting input buffer handle goes out of scope:
+
+```rust
+// Create and split a triple buffer
+use triple_buffer::triple_buffer;
+let (mut buf_input, _) = triple_buffer(&String::with_capacity(42));
+
+// Mutate the input buffer in place and publish it
+{
+    // Acquire a reference to the input buffer
+    let mut input = buf_input.input_buffer_publisher();
+
+    // In general, you don't know what's inside of the buffer, so you should
+    // always reset the value before use (this is a type-specific process).
+    input.clear();
+
+    // Perform an in-place update
+    input.push_str("Hello world!");
+
+    // Input buffer is automatically published at the end of the scope of
+    // the "input" RAII guard
+}
+
+// From this point on, the consumer can see the updated version
 ```
 
 
