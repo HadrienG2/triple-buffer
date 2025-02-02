@@ -1,5 +1,3 @@
-//! Triple buffering in Rust
-//!
 //! In this crate, we propose a Rust implementation of triple buffering. This is
 //! a non-blocking thread synchronization mechanism that can be used when a
 //! single producer thread is frequently updating a shared data block, and a
