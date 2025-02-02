@@ -11,12 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _No unreleased changes in the pipeline at the moment_
 
 
+## [8.1.0] - 2025-02-02
+
+### Added
+
+- Add `Input::input_buffer_publisher()` method to provide an RAII-based
+  alternative to the low-level `input_buffer()`/`publish()` interface. Thanks
+  @crop2000 !
+
+### Changed
+
+- Rename `Input::input_buffer()` to `Input::input_buffer_mut()`, keeping a
+  deprecated alias for now, and do the same for `Output::output_buffer()`. This
+  is the start of a gradual deprecation process whose end goal is to eventually
+  follow the standard Rust accessor naming convention (`input_buffer(&self) ->
+  &T`, `input_buffer_mut(&mut self) -> &mut T`, same thing on the output side).
+
+
 ## [8.0.0] - 2024-06-21
 
 ### Added
 
 - Add `Output::peek_output_buffer()` method to get read-only access to the
-  output buffer from a shared reference to self. Thanks @tk70!
+  output buffer from a shared reference to self. Thanks @tk70 !
 
 ### Changed
 
@@ -303,7 +320,8 @@ _No unreleased changes in the pipeline at the moment_
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v8.0.0...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.0...HEAD
+[8.1.0]: https://github.com/HadrienG2/triple-buffer/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v7.0.0...v8.0.0
 [7.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.2.0...v7.0.0
 [6.2.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.1.0...v6.2.0
