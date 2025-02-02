@@ -128,7 +128,6 @@ use core::{
 /// communication channel which behaves like a shared variable: the producer
 /// submits regular updates, and the consumer accesses the latest available
 /// value whenever it feels like it.
-///
 #[derive(Debug)]
 pub struct TripleBuffer<T: Send> {
     /// Input object used by producers to send updates
@@ -235,7 +234,6 @@ impl<T: PartialEq + Send> PartialEq for TripleBuffer<T> {
 /// buffer whenever he likes. These updates are nonblocking: a collision between
 /// the producer and the consumer will result in cache contention, but deadlocks
 /// and scheduling-induced slowdowns cannot happen.
-///
 #[derive(Debug)]
 pub struct Input<T: Send> {
     /// Reference-counted shared state
@@ -263,7 +261,6 @@ impl<T: Send> Input<T> {
     /// effectively be building a very poor spinlock-based double buffer
     /// implementation. If what you truly need is a double buffer, build
     /// yourself a proper blocking one instead of wasting CPU time.
-    ///
     pub fn consumed(&self) -> bool {
         let back_info = self.shared.back_info.load(Ordering::Relaxed);
         back_info & BACK_DIRTY_BIT == 0
@@ -275,7 +272,6 @@ impl<T: Send> Input<T> {
     /// [`input_buffer_mut()`](Input::input_buffer_mut). Please read the
     /// documentation of that method for more information on the precautions
     /// that need to be taken when accessing the input buffer in place.
-    ///
     fn peek_input_buffer(&self) -> &T {
         // Access the input buffer directly
         let input_ptr = self.shared.buffers[self.input_idx as usize].get();
@@ -294,7 +290,6 @@ impl<T: Send> Input<T> {
     /// The aim of this process is to eventually migrate towards the standard
     /// `accessor()`/`accessor_mut()` method naming convention that most Rust
     /// libraries follow.
-    ///
     #[deprecated = "Please use input_buffer_mut() instead"]
     pub fn input_buffer(&mut self) -> &mut T {
         self.input_buffer_mut()
@@ -323,7 +318,6 @@ impl<T: Send> Input<T> {
     /// input buffer reference goes out of scope, consider using the
     /// [`input_buffer_publisher()`](Input::input_buffer_publisher) RAII
     /// interface instead.
-    ///
     pub fn input_buffer_mut(&mut self) -> &mut T {
         // This is safe because the synchronization protocol ensures that we
         // have exclusive access to this buffer.
@@ -341,7 +335,6 @@ impl<T: Send> Input<T> {
     ///
     /// It will also tell you whether you overwrote a value which was not read
     /// by the consumer thread.
-    ///
     pub fn publish(&mut self) -> bool {
         // Swap the input buffer and the back buffer, setting the dirty bit
         //
@@ -385,19 +378,20 @@ impl<T: Send> Input<T> {
     ///
     /// [`input_buffer_mut()`]: Input::input_buffer_mut
     /// [`publish()`]: Input::publish
-    ///
     pub fn input_buffer_publisher(&mut self) -> InputPublishGuard<T> {
         InputPublishGuard { reference: self }
     }
 }
 
-/// RAII Guard to the buffer provided by an `Input`.
+/// RAII Guard to the buffer provided by an [`Input`].
 ///
-/// The current buffer of the `Input` can be accessed through this guard via its `Deref` and `DerefMut` implementations.
-/// When the `InputPublishGuard` is dropped it calls publish.
+/// The current buffer of the [`Input`] can be accessed through this guard via
+/// its [`Deref`] and [`DerefMut`] implementations.
 ///
-/// This structure is created by the `guarded_input_buffer` method.
+/// When the guard is dropped, [`Input::publish()`] will be called
+/// automatically.
 ///
+/// This structure is created by the [`Input::input_buffer_publisher()`] method.
 pub struct InputPublishGuard<'a, T: 'a + Send> {
     reference: &'a mut Input<T>,
 }
@@ -441,7 +435,6 @@ impl<T: fmt::Display + Send> fmt::Display for InputPublishGuard<'_, T> {
 /// update from the producer whenever he likes. Readout is nonblocking: a
 /// collision between the producer and consumer will result in cache contention,
 /// but deadlocks and scheduling-induced slowdowns cannot happen.
-///
 #[derive(Debug)]
 pub struct Output<T: Send> {
     /// Reference-counted shared state
@@ -469,7 +462,6 @@ impl<T: Send> Output<T> {
     /// effectively be building a very poor spinlock-based double buffer
     /// implementation. If what you truly need is a double buffer, build
     /// yourself a proper blocking one instead of wasting CPU time.
-    ///
     pub fn updated(&self) -> bool {
         let back_info = self.shared.back_info.load(Ordering::Relaxed);
         back_info & BACK_DIRTY_BIT != 0
@@ -485,7 +477,6 @@ impl<T: Send> Output<T> {
     /// In particular, remember that this method does not update the output
     /// buffer automatically. You need to call [`update()`](Output::update) in
     /// order to fetch buffer updates from the producer.
-    ///
     pub fn peek_output_buffer(&self) -> &T {
         // Access the output buffer directly
         let output_ptr = self.shared.buffers[self.output_idx as usize].get();
@@ -511,7 +502,6 @@ impl<T: Send> Output<T> {
     ///
     /// [`output_buffer_mut()`]: Output::output_buffer_mut
     /// [`peek_output_buffer()`]: Output::peek_output_buffer
-    ///
     #[deprecated = "Please use output_buffer_mut() instead"]
     pub fn output_buffer(&mut self) -> &mut T {
         self.output_buffer_mut()
@@ -537,7 +527,6 @@ impl<T: Send> Output<T> {
     ///
     /// [`read()`]: Output::read
     /// [`update()`]: Output::update
-    ///
     pub fn output_buffer_mut(&mut self) -> &mut T {
         // This is safe because the synchronization protocol ensures that we
         // have exclusive access to this buffer.
@@ -554,7 +543,6 @@ impl<T: Send> Output<T> {
     /// Bear in mind that when this happens, you will lose any change that you
     /// performed to the output buffer via the
     /// [`output_buffer_mut()`](Output::output_buffer_mut) interface.
-    ///
     pub fn update(&mut self) -> bool {
         // Check if an update is present in the back-buffer
         let updated = self.updated();
@@ -602,7 +590,6 @@ impl<T: Send> Output<T> {
 /// - Three memory buffers suitable for storing the data at hand
 /// - Information about the back-buffer: which buffer is the current back-buffer
 ///   and whether an update was published since the last readout.
-///
 #[derive(Debug)]
 struct SharedState<T: Send> {
     /// Data storage buffers
@@ -1105,7 +1092,6 @@ mod tests {
     /// - Close running applications in the background
     /// - Re-run the tests with only one OS thread (--test-threads=1)
     /// - Increase the writer sleep period
-    ///
     #[test]
     #[ignore]
     fn uncontended_concurrent_read_write() {
