@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _No unreleased changes in the pipeline at the moment_
 
 
+
+## [8.1.1] - 2025-05-04
+
+### Changed
+
+- Switched to edition 2021 since the current MSRV allows for it
+
+### Fixed
+
+- Updated README to reflect current API
+- Commit lockfile to avoid surprise semver/MSRV breakage from deps
+
+
 ## [8.1.0] - 2025-02-02
 
 ### Added
@@ -320,7 +333,8 @@ _No unreleased changes in the pipeline at the moment_
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.0...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.1...HEAD
+[8.1.1]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.0...v8.1.1
 [8.1.0]: https://github.com/HadrienG2/triple-buffer/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v7.0.0...v8.0.0
 [7.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v6.2.0...v7.0.0
