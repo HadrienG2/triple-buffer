@@ -5,8 +5,8 @@ name = "triple_buffer"
 #
 # - Cross-check all public API documentation, update as needed
 # - Update changelog
-# - Update version number in Cargo.toml
-# - Push master, make sure it passes CI
+# - Update version number in Cargo.toml, run some command to update lockfile
+# - Push branch, auto-merge when it passes CI
 # - Cargo publish
 # - Roll an annotated git tag
 # - Add a github release
