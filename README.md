@@ -35,8 +35,9 @@ let consumer = std::thread::spawn(move || {
     assert!(*latest == 42 || *latest == 0);
 });
 
-# producer.join().unwrap();
-# consumer.join().unwrap();
+// Wait for both threads to be done
+producer.join().unwrap();
+consumer.join().unwrap();
 ```
 
 In situations where moving the original value away and being unable to
