@@ -62,11 +62,11 @@
 //! // Manually fetch the buffer update from the consumer interface
 //! buf_output.update();
 //!
-//! // Acquire read-only reference to the output buffer
-//! let output = buf_output.peek_output_buffer();
+//! // Acquire a read-only reference to the output buffer
+//! let output = buf_output.output_buffer();
 //! assert_eq!(*output, "Hello, ");
 //!
-//! // Or acquire mutable reference if necessary
+//! // Or acquire a mutable reference if necessary
 //! let output_mut = buf_output.output_buffer_mut();
 //!
 //! // Post-process the output value before use
@@ -266,31 +266,15 @@ impl<T: Send> Input<T> {
 
     /// Query the current value of the input buffer
     ///
-    /// This is simply a read-only version of
+    /// This is a read-only version of
     /// [`input_buffer_mut()`](Input::input_buffer_mut). Please read the
     /// documentation of that method for more information on the precautions
     /// that need to be taken when accessing the input buffer in place.
-    fn peek_input_buffer(&self) -> &T {
-        // Access the input buffer directly
+    pub fn input_buffer(&self) -> &T {
+        // This is safe because the synchronization protocol ensures that we
+        // have exclusive access to this buffer.
         let input_ptr = self.shared.buffers[self.input_idx as usize].get();
         unsafe { &*input_ptr }
-    }
-
-    /// Access the input buffer directly
-    ///
-    /// This is, for now, a deprecated alias to
-    /// [`input_buffer_mut()`](Input::input_buffer_mut). Please use this method
-    /// instead.
-    ///
-    /// In a future major release of this crate, `input_buffer()` will
-    /// undergo a breaking change to instead provide read-only access.
-    ///
-    /// The aim of this process is to eventually migrate towards the standard
-    /// `accessor()`/`accessor_mut()` method naming convention that most Rust
-    /// libraries follow.
-    #[deprecated = "Please use input_buffer_mut() instead"]
-    pub fn input_buffer(&mut self) -> &mut T {
-        self.input_buffer_mut()
     }
 
     /// Access the input buffer directly
@@ -398,7 +382,7 @@ impl<T: Send> Deref for InputPublishGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.reference.peek_input_buffer()
+        self.reference.input_buffer()
     }
 }
 
@@ -467,7 +451,18 @@ impl<T: Send> Output<T> {
 
     /// Query the current value of the output buffer
     ///
-    /// This is simply a read-only version of
+    /// This is a deprecated compatibility alias to
+    /// [`output_buffer()`](Self::output_buffer). Please use that method
+    /// instead, as `peek_output_buffer()` is scheduled for removal in the next
+    /// major release of `triple-buffer`.
+    #[deprecated = "Please use output_buffer() instead"]
+    pub fn peek_output_buffer(&self) -> &T {
+        self.output_buffer()
+    }
+
+    /// Query the current value of the output buffer
+    ///
+    /// This is a read-only version of
     /// [`output_buffer_mut()`](Output::output_buffer_mut). Please read the
     /// documentation of that method for more information on the precautions
     /// that need to be taken when accessing the output buffer in place.
@@ -475,34 +470,11 @@ impl<T: Send> Output<T> {
     /// In particular, remember that this method does not update the output
     /// buffer automatically. You need to call [`update()`](Output::update) in
     /// order to fetch buffer updates from the producer.
-    pub fn peek_output_buffer(&self) -> &T {
-        // Access the output buffer directly
+    pub fn output_buffer(&self) -> &T {
+        // This is safe because the synchronization protocol ensures that we
+        // have exclusive access to this buffer.
         let output_ptr = self.shared.buffers[self.output_idx as usize].get();
         unsafe { &*output_ptr }
-    }
-
-    /// Access the input buffer directly
-    ///
-    /// This is, for now, a deprecated alias to [`output_buffer_mut()`]. Please
-    /// use this method instead.
-    ///
-    /// In a future major release of this crate, `output_buffer()` will undergo
-    /// a breaking change to instead provide read-only access, like
-    /// [`peek_output_buffer()`] currently does. At that point,
-    /// [`peek_output_buffer()`] will be deprecated.
-    ///
-    /// Finally, in a later major release [`peek_output_buffer()`] will be
-    /// removed.
-    ///
-    /// The aim of this process is to eventually migrate towards the standard
-    /// `accessor()`/`accessor_mut()` method naming convention that most Rust
-    /// libraries follow.
-    ///
-    /// [`output_buffer_mut()`]: Output::output_buffer_mut
-    /// [`peek_output_buffer()`]: Output::peek_output_buffer
-    #[deprecated = "Please use output_buffer_mut() instead"]
-    pub fn output_buffer(&mut self) -> &mut T {
-        self.output_buffer_mut()
     }
 
     /// Access the output buffer directly
@@ -1169,7 +1141,7 @@ mod tests {
             move || {
                 let mut last_value = 0usize;
                 while last_value < TEST_WRITE_COUNT {
-                    match buf_output.peek_output_buffer().get() {
+                    match buf_output.output_buffer().get() {
                         Racey::Consistent(new_value) => {
                             assert!((new_value >= last_value) && (new_value <= TEST_WRITE_COUNT));
                             last_value = new_value;
@@ -1240,7 +1212,7 @@ mod tests {
 
         // Check that the output_buffer query works in the initial state
         assert_eq!(
-            as_ptr(&buf.output.peek_output_buffer()),
+            as_ptr(&buf.output.output_buffer()),
             buf.output.shared.buffers[buf.output.output_idx as usize].get()
         );
         assert_eq!(*buf, initial_buf);

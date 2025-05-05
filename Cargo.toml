@@ -11,7 +11,7 @@ name = "triple_buffer"
 # - Roll an annotated git tag
 # - Add a github release
 #
-version = "8.1.1"
+version = "9.0.0"
 authors = ["Hadrien G. <knights_of_ni@gmx.com>"]
 description = "An implementation of triple buffering, useful for sharing frequently updated data between threads"
 documentation = "https://docs.rs/triple_buffer/"

@@ -6,7 +6,7 @@ pub fn benchmark(c: &mut Criterion) {
 
     {
         let mut uncontended = c.benchmark_group("uncontended");
-        uncontended.bench_function("read output", |b| b.iter(|| *output.peek_output_buffer()));
+        uncontended.bench_function("read output", |b| b.iter(|| *output.output_buffer()));
         uncontended.bench_function("clean update", |b| {
             b.iter(|| {
                 output.update();
@@ -79,7 +79,7 @@ pub fn benchmark(c: &mut Criterion) {
             || input.write(black_box(0)),
             || {
                 write_contended
-                    .bench_function("read output", |b| b.iter(|| *output.peek_output_buffer()));
+                    .bench_function("read output", |b| b.iter(|| *output.output_buffer()));
                 write_contended.bench_function("update", |b| {
                     b.iter(|| {
                         output.update();
