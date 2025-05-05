@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes in the pipeline at the moment_
+### Changed
+
+- Turn `Input::input_buffer()` and `Output::output_buffer()` into read-only
+  accessors and deprecate `Output::peek_output_buffer()`, moving forward with
+  the plan set in issue #30 to eventually migrate towards an API naming
+  convention that matches `std` and other Rust libraries.
 
 
 

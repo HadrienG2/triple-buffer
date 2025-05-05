@@ -74,11 +74,11 @@ buf_input.publish();
 // Manually fetch the buffer update from the consumer interface
 buf_output.update();
 
-// Acquire read-only reference to the output buffer
-let output = buf_output.peek_output_buffer();
+// Acquire a read-only reference to the output buffer
+let output = buf_output.output_buffer();
 assert_eq!(*output, "Hello, ");
 
-// Or acquire mutable reference if necessary
+// Or acquire a mutable reference if necessary
 let output_mut = buf_output.output_buffer_mut();
 
 // Post-process the output value before use

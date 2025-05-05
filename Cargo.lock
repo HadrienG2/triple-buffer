@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "triple_buffer"
-version = "8.1.1"
+version = "9.0.0"
 dependencies = [
  "criterion",
  "crossbeam-utils",
