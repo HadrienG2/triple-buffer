@@ -327,9 +327,9 @@ dependencies = [
 
 [[package]]
 name = "testbench"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f42aea0e7814e8c520bb46ccc27df2b52af257cad23b9af9218410feac294e3"
+checksum = "4e102f3aa6b7242c8029c115def70364a064de5a11b49fade2b4a3cdbc8aa28f"
 
 [[package]]
 name = "tinytemplate"
