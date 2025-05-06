@@ -27,6 +27,13 @@ rust-version = "1.74"
 maintenance = { status = "passively-maintained" }
 
 [features]
+# Enable use of the system memory allocator by default, you can disable this
+# with default-features = false when targeting no_alloc environments
+default = ["alloc"]
+
+# Allow use of the system memory allocator for improved ergonomics
+alloc = []
+
 # Adjust the test configuration (e.g. reduce problem sizes) so the tests can run
 # under Miri within a reasonable time budget.
 miri = []

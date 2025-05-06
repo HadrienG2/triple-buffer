@@ -8,13 +8,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An `alloc` Cargo feature has been added, which is enabled by default.
+  Disabling this feature will enable `no_alloc` operation, which lets
+  `triple_buffer` be used in lower-level use cases where heap memory allocation
+  is not available. This required several API changes, which are described in
+  the `Changed` section below.
+
 ### Changed
 
 - Turn `Input::input_buffer()` and `Output::output_buffer()` into read-only
   accessors and deprecate `Output::peek_output_buffer()`, moving forward with
   the plan set in issue #30 to eventually migrate towards an API naming
-  convention that matches `std` and other Rust libraries.
-
+  convention that is consistent with other Rust libraries.
+- The API underwent a major redesign to improve support for embedded use cases
+  including `no_alloc` and DMA.
+  * `TripleBuffer::split()` is gone. It has been replaced with a set of
+    `inout()` methods that similarly let you create `Input` and `Output`
+    interfaces, but work without moving the original `TripleBuffer` away as this 
+    was incompatible with inline allocation (see other bullet points below).
+    - Beware that `TripleBuffer` remains an SPSC synchronization primitive, and
+      therefore attempts to create multiple `Input`s and `Output`s for a single
+      `TripleBuffer` will result in a panic. In an `std`/`alloc` context, the
+      `triple_buffer()` high-level constructor, which remains available, does
+      not expose this avenue for panicking.
+  * Instead of being generic over the data type `T` that they operate upon,
+    `Input` and `Output` are now generic over a `Shared` type that dereferences
+    to a `TripleBuffer<T>`.
+    - This means that in addition to being usable with reference-counted
+      triple-buffers (`Shared = Arc<TripleBuffer<T>>`), which were secretely
+      used under the hood before, `Input`s and `Output`s can now be built out of
+      shared Rust references to statically allocated triple buffers (`Shared = 
+      &'static TripleBuffer<T>`), enabling `no_alloc` operation.
+    - When a "scoped thread" abstraction is used for both the producer and
+      consumer threads, stack-allocated triple buffers are also an option.
+  * `TripleBuffer` now stores its titular buffers inline, and is guaranteed
+    through `repr(C)` to store them as its first data member. On embedded
+    platforms where DMA is not too heavily constrained (i.e. your favorite HAL
+    can expose DMA as an `async fn write(&mut[u8])` without too many strange
+    preconditions), this can be enough to let you perform DMA into the input
+    buffer or from the output buffer.
+    - Bear in mind that embedded platforms often restrict DMA to certain memory
+      address ranges. If so, you will need to annotate the static `TripleBuffer`
+      storage with an `#[unsafe(link_section)]` directive and set up your linker
+      script appropriately.
+    - This functionality does not give you full data layout control, and unsafe
+      code on your side must not assume that the first data member of a
+      `TripleBuffer` is literally a `[T; 3]`. For example, `TripleBuffer` will
+      over-align its inner three buffers to a multiple of the CPU's cache line
+      size for performance reasons. If this alignment interferes with your
+      favorite platform's DMA constraints, feel free to open an issue with
+      details and we'll see if that can be resolved at the `triple_buffer`
+      level.
+    - General precautions for the use of DMA in Rest continue to apply, for
+      example you should still be very careful with unsafe code that allows
+      hardware to write to storage that has Rust references pointing to it. It
+      can be done, but getting it right requires a lot of minutia.
+  * Finally, to support weirder value types that are neither `Copy` nor
+    `Default`, as well as embedded platforms with heavier DMA constraints,
+    `TripleBuffer` constructors have become more flexible, exposing the
+    initialization of the three inner data values that give this synchronization
+    primitive its name.
+    - Although these new constructors must be used with care (please read their
+      docs), they should provide the required flexibility to let you allocate
+      the inner three buffers using a special procedure that is as exotic as
+      necessary for your use case. However, this will often come at the expense
+      of making accesses go through a layer of indirection and losing a bit of
+      RAM to unnecessary cache-padding, which is why inline allocation should be
+      preferred whenever applicable (and ideally fixed when not applicable).
 
 
 ## [8.1.1] - 2025-05-04
