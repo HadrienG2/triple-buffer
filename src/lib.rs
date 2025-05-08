@@ -415,7 +415,7 @@ impl<Shared: TripleBufferRef> Input<Shared> {
         shared
             .status()
             .next_io_indices
-            .fetch_update(Ordering::Release, Ordering::Relaxed, |old_next_indices| {
+            .fetch_update(Ordering::Acquire, Ordering::Relaxed, |old_next_indices| {
                 input_idx =
                     (old_next_indices & NEXT_INPUT_MASK) >> NEXT_INPUT_MASK.trailing_zeros();
                 assert_ne!(
@@ -657,7 +657,7 @@ impl<Shared: TripleBufferRef> Output<Shared> {
         shared
             .status()
             .next_io_indices
-            .fetch_update(Ordering::Release, Ordering::Relaxed, |old_next_indices| {
+            .fetch_update(Ordering::Acquire, Ordering::Relaxed, |old_next_indices| {
                 output_idx =
                     (old_next_indices & NEXT_OUTPUT_MASK) >> NEXT_OUTPUT_MASK.trailing_zeros();
                 assert_ne!(
