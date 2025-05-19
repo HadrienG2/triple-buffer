@@ -35,7 +35,7 @@ miri = []
 crossbeam-utils = { version = "0.8.11", default-features = false }
 
 [dev-dependencies]
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.6", default-features = false }
 testbench = "1.0"
 
 [lib]
