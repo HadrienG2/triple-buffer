@@ -360,7 +360,7 @@ impl<T: Send> Input<T> {
     ///
     /// [`input_buffer_mut()`]: Input::input_buffer_mut
     /// [`publish()`]: Input::publish
-    pub fn input_buffer_publisher(&mut self) -> InputPublishGuard<T> {
+    pub fn input_buffer_publisher(&mut self) -> InputPublishGuard<'_, T> {
         InputPublishGuard { reference: self }
     }
 }
