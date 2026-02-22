@@ -6,6 +6,8 @@
 #   compatible and lint-free on upcoming Rust toolchains (beta and nightly).
 
 name: Continuous Integration
+permissions:
+  contents: read
 
 on:
   push:
