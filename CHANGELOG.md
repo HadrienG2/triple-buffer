@@ -8,13 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes in the pipeline at the moment._
+
+
+## [9.0.0] - 2026-02-22
+
 ### Changed
 
-- Turn `Input::input_buffer()` and `Output::output_buffer()` into read-only
+- Turned `Input::input_buffer()` and `Output::output_buffer()` into read-only
   accessors and deprecate `Output::peek_output_buffer()`, moving forward with
   the plan set in issue #30 to eventually migrate towards an API naming
   convention that matches `std` and other Rust libraries.
-
+- Bumped MSRV to 1.86 owing to new dependency requirements.
 
 
 ## [8.1.1] - 2025-05-04
@@ -338,7 +343,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.1...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v9.0.0...HEAD
+[9.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.1...v9.0.0
 [8.1.1]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.0...v8.1.1
 [8.1.0]: https://github.com/HadrienG2/triple-buffer/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v7.0.0...v8.0.0

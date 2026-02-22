@@ -20,8 +20,8 @@ readme = "README.md"
 keywords = [ "synchronization", "spsc", "multithreading", "non-blocking", "wait-free" ]
 categories = [ "algorithms", "asynchronous", "concurrency", "data-structures" ]
 license = "MPL-2.0"
-edition = "2021"
-rust-version = "1.74"
+edition = "2024"
+rust-version = "1.86"
 
 [badges]
 maintenance = { status = "passively-maintained" }
@@ -35,7 +35,7 @@ miri = []
 crossbeam-utils = { version = "0.8.11", default-features = false }
 
 [dev-dependencies]
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.8", default-features = false }
 testbench = "1.0"
 
 [lib]
