@@ -5,7 +5,7 @@
 [![On docs.rs](https://docs.rs/triple_buffer/badge.svg)](https://docs.rs/triple_buffer/)
 [![Continuous Integration](https://img.shields.io/github/actions/workflow/status/HadrienG2/triple-buffer/ci.yml?branch=master)](https://github.com/HadrienG2/triple-buffer/actions?query=workflow%3A%22Continuous+Integration%22)
 ![Requires rustc
-1.74.0+](https://img.shields.io/badge/rustc-1.74.0+-lightgray.svg)
+1.86.0+](https://img.shields.io/badge/rustc-1.86.0+-lightgray.svg)
 
 
 ## What is this?

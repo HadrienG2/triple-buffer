@@ -589,7 +589,7 @@ impl<T: Clone + Send> SharedState<T> {
     /// is concurrently accessing it, since &self is enough for writing.
     unsafe fn clone(&self) -> Self {
         Self::new(
-            |i| (*self.buffers[i].get()).clone(),
+            |i| unsafe { (*self.buffers[i].get()).clone() },
             self.back_info.load(Ordering::Relaxed),
         )
     }
@@ -607,7 +607,7 @@ impl<T: PartialEq + Send> SharedState<T> {
             .zip(other.buffers.iter())
             .all(|tuple| -> bool {
                 let (cell1, cell2) = tuple;
-                *cell1.get() == *cell2.get()
+                unsafe { *cell1.get() == *cell2.get() }
             });
 
         // ...then check whether the rest of the shared state is equal

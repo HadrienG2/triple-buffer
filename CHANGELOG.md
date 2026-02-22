@@ -10,10 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Turn `Input::input_buffer()` and `Output::output_buffer()` into read-only
+- Turned `Input::input_buffer()` and `Output::output_buffer()` into read-only
   accessors and deprecate `Output::peek_output_buffer()`, moving forward with
   the plan set in issue #30 to eventually migrate towards an API naming
   convention that matches `std` and other Rust libraries.
+- Bumped MSRV to 1.86 owing to new dependency requirements.
 
 
 
