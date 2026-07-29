@@ -48,7 +48,7 @@ good security advisory should...
 
 - Describe the vulnerability
 - Assess its impact on downstream users of the library
-- Provides instructions on how to replicate the issue locally
+- Provide instructions on how to replicate the issue locally
 - Additionally provide a patch that addresses the issue, if you have one
   available (otherwise the project will take care of writing it)
 
