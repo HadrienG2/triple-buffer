@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _No unreleased changes in the pipeline at the moment._
 
 
+## [9.0.1] - 2026-11-07
+
+### Added
+
+- Add a security policy
+
+### Fixed
+
+- Ensure `Input<T>` and `Output<T>` are only `Sync` when `T: Sync`
+
+
 ## [9.0.0] - 2026-02-22
 
 ### Changed
@@ -343,7 +354,8 @@ _No unreleased changes in the pipeline at the moment._
 
 
 
-[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v9.0.0...HEAD
+[Unreleased]: https://github.com/HadrienG2/triple-buffer/compare/v9.0.1...HEAD
+[9.0.1]: https://github.com/HadrienG2/triple-buffer/compare/v9.0.0...v9.0.1
 [9.0.0]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.1...v9.0.0
 [8.1.1]: https://github.com/HadrienG2/triple-buffer/compare/v8.1.0...v8.1.1
 [8.1.0]: https://github.com/HadrienG2/triple-buffer/compare/v8.0.0...v8.1.0

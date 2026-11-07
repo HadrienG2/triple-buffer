@@ -116,6 +116,7 @@ use alloc::sync::Arc;
 use core::{
     cell::UnsafeCell,
     fmt,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicU8, Ordering},
 };
@@ -160,10 +161,12 @@ impl<T: Send> TripleBuffer<T> {
             input: Input {
                 shared: shared_state.clone(),
                 input_idx: 1,
+                _conditionally_sync: PhantomData,
             },
             output: Output {
                 shared: shared_state,
                 output_idx: 2,
+                _conditionally_sync: PhantomData,
             },
         }
     }
@@ -203,10 +206,12 @@ impl<T: Clone + Send> Clone for TripleBuffer<T> {
             input: Input {
                 shared: shared_state.clone(),
                 input_idx: self.input.input_idx,
+                _conditionally_sync: PhantomData,
             },
             output: Output {
                 shared: shared_state,
                 output_idx: self.output.output_idx,
+                _conditionally_sync: PhantomData,
             },
         }
     }
@@ -239,6 +244,13 @@ pub struct Input<T: Send> {
 
     /// Index of the input buffer (which is private to the producer)
     input_idx: BufferIndex,
+
+    /// Ensure that `Sync` is implemented only if `T: Sync`
+    ///
+    /// Without this, `input_buffer()` would incorrectly enable racy access to
+    /// the input buffer, in edge cases where an `Input` is shared between
+    /// multiple threads.
+    _conditionally_sync: PhantomData<T>,
 }
 //
 // Public interface
@@ -424,6 +436,13 @@ pub struct Output<T: Send> {
 
     /// Index of the output buffer (which is private to the consumer)
     output_idx: BufferIndex,
+
+    /// Ensure that `Sync` is implemented only if `T: Sync`
+    ///
+    /// Without this, `output_buffer()` would incorrectly enable racy access to
+    /// the output buffer, in edge cases where an `Output` is shared between
+    /// multiple threads.
+    _conditionally_sync: PhantomData<T>,
 }
 //
 // Public interface
@@ -616,6 +635,11 @@ impl<T: PartialEq + Send> SharedState<T> {
     }
 }
 //
+// This Sync implementation is needed to ensure that we can send an
+// Arc<SharedState<_>> to other threads (Arc<T> is only Send if T is Sync), and
+// thus that we can send Input<T> and Output<T> to other threads as intended.
+// But be very careful: not all interactions with SharedState are thread-safe!
+#[doc(hidden)]
 unsafe impl<T: Send> Sync for SharedState<T> {}
 
 // Index types used for triple buffering
@@ -635,9 +659,24 @@ const BACK_DIRTY_BIT: u8 = 0b100; // Bit set by producer to signal updates
 /// Unit tests
 #[cfg(test)]
 mod tests {
-    use super::{BACK_DIRTY_BIT, BACK_INDEX_MASK, BufferIndex, SharedState, TripleBuffer};
+    use super::{
+        BACK_DIRTY_BIT, BACK_INDEX_MASK, BufferIndex, Input, Output, SharedState, TripleBuffer,
+    };
+    use core::cell::UnsafeCell;
+    use static_assertions::{assert_impl_all, assert_not_impl_any};
     use std::{fmt::Debug, ops::Deref, sync::atomic::Ordering, thread, time::Duration};
     use testbench::race_cell::{RaceCell, Racey};
+
+    // Check that Send and Sync are implemented correctly for user-visible types
+    assert_impl_all!(TripleBuffer<()>: Send, Sync);
+    assert_impl_all!(TripleBuffer<UnsafeCell<()>>: Send);
+    assert_not_impl_any!(TripleBuffer<UnsafeCell<()>>: Sync);
+    assert_impl_all!(Input<()>: Send, Sync);
+    assert_impl_all!(Input<UnsafeCell<()>>: Send);
+    assert_not_impl_any!(Input<UnsafeCell<()>>: Sync);
+    assert_impl_all!(Output<()>: Send, Sync);
+    assert_impl_all!(Output<UnsafeCell<()>>: Send);
+    assert_not_impl_any!(Output<UnsafeCell<()>>: Sync);
 
     /// Check that triple buffers are properly initialized
     #[test]
