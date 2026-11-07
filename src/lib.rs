@@ -660,7 +660,7 @@ const BACK_DIRTY_BIT: u8 = 0b100; // Bit set by producer to signal updates
 #[cfg(test)]
 mod tests {
     use super::{
-        BufferIndex, Input, Output, SharedState, TripleBuffer, BACK_DIRTY_BIT, BACK_INDEX_MASK,
+        BACK_DIRTY_BIT, BACK_INDEX_MASK, BufferIndex, Input, Output, SharedState, TripleBuffer,
     };
     use core::cell::UnsafeCell;
     use static_assertions::{assert_impl_all, assert_not_impl_any};
@@ -668,17 +668,15 @@ mod tests {
     use testbench::race_cell::{RaceCell, Racey};
 
     // Check that Send and Sync are implemented correctly for user-visible types
-    type SyncType = ();
-    type NotSyncType = UnsafeCell<()>;
-    assert_impl_all!(TripleBuffer<SyncType>: Send, Sync);
-    assert_impl_all!(TripleBuffer<NotSyncType>: Send);
-    assert_not_impl_any!(TripleBuffer<NotSyncType>: Sync);
-    assert_impl_all!(Input<SyncType>: Send, Sync);
-    assert_impl_all!(Input<NotSyncType>: Send);
-    assert_not_impl_any!(Input<NotSyncType>: Sync);
-    assert_impl_all!(Output<SyncType>: Send, Sync);
-    assert_impl_all!(Output<NotSyncType>: Send);
-    assert_not_impl_any!(Output<NotSyncType>: Sync);
+    assert_impl_all!(TripleBuffer<()>: Send, Sync);
+    assert_impl_all!(TripleBuffer<UnsafeCell<()>>: Send);
+    assert_not_impl_any!(TripleBuffer<UnsafeCell<()>>: Sync);
+    assert_impl_all!(Input<()>: Send, Sync);
+    assert_impl_all!(Input<UnsafeCell<()>>: Send);
+    assert_not_impl_any!(Input<UnsafeCell<()>>: Sync);
+    assert_impl_all!(Output<()>: Send, Sync);
+    assert_impl_all!(Output<UnsafeCell<()>>: Send);
+    assert_not_impl_any!(Output<UnsafeCell<()>>: Sync);
 
     /// Check that triple buffers are properly initialized
     #[test]
